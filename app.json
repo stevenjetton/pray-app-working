@@ -1,39 +1,47 @@
 {
   "expo": {
-    "name": "test-expo-router",
-    "slug": "test-expo-router",
+    "name": "Pr.a.y",
+    "slug": "identity-in-christ-app",
     "version": "1.0.0",
+    "scheme": "com.pray.identityinchristapp",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
-    "userInterfaceStyle": "automatic",
+    "icon": "assets/images/logo-pray.png",
     "splash": {
-      "image": "./assets/images/splash.png",
+      "image": "assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "jsEngine": "jsc",
     "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+      "bundleIdentifier": "com.pray.identiyinchrist",
+      "buildNumber": "1.0.0",
+      "googleServicesFile": "ios/Pray/GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+    "android": {
+      "package": "com.pray.identityinchristapp",
+      "versionCode": 1,
+      "googleServicesFile": "android/app/google-services.json"
     },
     "plugins": [
-      "expo-router"
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
+      "expo-router",
+      [
+        "react-native-voicekit",
+        {
+          "speechRecognitionPermission": "This app needs speech recognition to transcribe your voice.",
+          "microphonePermission": "This app needs microphone access to record your voice."
+        }
+      ],
+      "expo-secure-store"
     ],
-    "experiments": {
-      "typedRoutes": true
+    "extra": {
+      "eas": {
+        "projectId": "0bebe137-6711-4acf-9423-50d1805397e2"
+      }
     }
   }
 }
