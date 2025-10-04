@@ -37,6 +37,7 @@ import { useDropboxAuth } from '@/context/DropboxAuthContext';
 import type { DropboxEntry } from '@/hooks/useDropbox';
 import { useDropboxSync } from '@/hooks/useDropboxSync';
 import { Audio, InterruptionModeIOS } from 'expo-av';
+import * as Haptics from 'expo-haptics';
 
 import { useVoice, VoiceMode } from 'react-native-voicekit';
 
@@ -86,11 +87,7 @@ function getEncounterDateValue(encounter: Encounter): number {
 }
 
 export default function VoiceRecorder() {
-  // Debug: log params.tag, sortTags, and allTags on every render
-  React.useEffect(() => {
-    console.log('[VoiceRecorder][Debug] params.tag:', params?.tag, 'sortTags:', sortTags, 'allTags:', allTags.map(t => ({ id: t.id, label: t.label })));
-  });
-  // ...existing code...
+  // Debug: log params.tag, sortTags, and allTags when they change
   const params = useLocalSearchParams();
   // Get tag param from router
   const { tags: allTags, addTag, refreshTags } = useTags();
@@ -131,6 +128,8 @@ export default function VoiceRecorder() {
   const navigation = useNavigation();
   const drawerRef = useRef<DrawerLayout>(null);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const focusEffectProcessing = useRef(false);
+  const lastFocusTime = useRef(0);
 
   // Helper: map label or id to tag id (globalize by tag ID)
   const getTagIdFromLabel = (input: string): string | null => {
@@ -180,15 +179,24 @@ export default function VoiceRecorder() {
   // Reset tag filter when coming back from settings screens
   useFocusEffect(
     useCallback(() => {
-      // Check if we're coming back from a settings screen
-      const navState = navigation.getState?.();
-      const prevRoute = navState?.routes?.slice(-2)?.[0];
+      const now = Date.now();
       
-      console.log('[VoiceRecorder] useFocusEffect - prevRoute:', prevRoute?.name);
+      // Prevent re-entry if already processing or if called too recently
+      if (focusEffectProcessing.current || (now - lastFocusTime.current) < 2000) {
+        return;
+      }
       
-      // Check if we just deleted a tag
-      const checkDeletedTag = async () => {
+      focusEffectProcessing.current = true;
+      lastFocusTime.current = now;
+      
+      // Add a small delay to prevent rapid re-execution
+      const timeoutId = setTimeout(async () => {
         try {
+          // Check if we're coming back from a settings screen
+          const navState = navigation.getState?.();
+          const prevRoute = navState?.routes?.slice(-2)?.[0];
+          
+          // Check if we just deleted a tag
           const justDeletedTag = await AsyncStorage.getItem('just_deleted_tag');
           const deletedTagId = await AsyncStorage.getItem('deleted_tag_id');
           
@@ -202,34 +210,35 @@ export default function VoiceRecorder() {
             // Clear the flag
             await AsyncStorage.removeItem('just_deleted_tag');
             await AsyncStorage.removeItem('deleted_tag_id');
-            return true;
+          } else {
+            // Reset filter if coming from settings or tags screens
+            if ((prevRoute?.name?.includes('settings') || prevRoute?.name?.includes('tags'))) {
+              console.log('[VoiceRecorder] Resetting tag filter after settings');
+              setSortTags([]);
+            }
+            
+            // Handle case for specific deleted tags - check with stable allTags reference
+            if (params?.tag && allTags.length > 0 && !allTags.some(t => t.id === params.tag)) {
+              console.log(`[VoiceRecorder] Tag ${params.tag} no longer exists, clearing filter`);
+              setSortTags([]);
+              router.setParams({});
+            }
           }
-          return false;
         } catch (error) {
-          console.error('[VoiceRecorder] Error checking deleted tag:', error);
-          return false;
+          console.error('[VoiceRecorder] Error in useFocusEffect:', error);
+        } finally {
+          // Reset processing flag after a longer delay
+          setTimeout(() => {
+            focusEffectProcessing.current = false;
+          }, 2000); // Increased to 2 seconds to match the guard
         }
-      };
+      }, 500); // Increased delay to give more time
       
-      // Execute the check
-      checkDeletedTag().then(wasDeleted => {
-        // Only continue with other checks if we didn't just delete a tag
-        if (!wasDeleted) {
-          // Reset filter if coming from settings or tags screens
-          if ((prevRoute?.name?.includes('settings') || prevRoute?.name?.includes('tags'))) {
-            console.log('[VoiceRecorder] Resetting tag filter after settings');
-            setSortTags([]);
-          }
-          
-          // Handle case for specific deleted tags
-          if (params?.tag && !allTags.some(t => t.id === params.tag)) {
-            console.log(`[VoiceRecorder] Tag ${params.tag} no longer exists, clearing filter`);
-            setSortTags([]);
-            router.setParams({});
-          }
-        }
-      });
-    }, [navigation, params, allTags, router])
+      return () => {
+        clearTimeout(timeoutId);
+        focusEffectProcessing.current = false;
+      };
+    }, [navigation, params, router, allTags.map(t => t.id).join(',')]) // Stable dependency on tag IDs only
   );
 
   // Sorting and filtering
@@ -302,7 +311,7 @@ export default function VoiceRecorder() {
         setSortTags([]);
       }
     });
-  }, [params?.tag, allTags]);
+  }, [params?.tag]);
 
   // No-op: always visible
 
@@ -337,6 +346,12 @@ export default function VoiceRecorder() {
   const [dropboxError, setDropboxError] = useState<string | null>(null);
 
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
+
+  // Voice visualization state
+  const [audioLevel, setAudioLevel] = useState(0);
+  
+  // Audio level monitoring
+  const audioLevelInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Dropbox sync context with missing tag prompt
   // Already declared at top, do not redeclare
@@ -381,14 +396,7 @@ export default function VoiceRecorder() {
     }
   }, [dropboxSyncing]);
 
-  const { recordings, deleteRecording } = useRecordings();
-
-  // Log allTags and recordings on screen focus for debugging
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('[VoiceRecorder][Focus] Screen focused. Current tags:', allTags.map(t => ({ id: t.id, label: t.label })), 'Current recordings:', recordings.map(r => ({ id: r.id, tags: r.tags })));
-    }, [allTags, recordings])
-  );
+  const { recordings, deleteRecording, addRecording, updateRecording } = useRecordings();
 
   // Only apply filter if tags and recordings are loaded; add debug logs
   useEffect(() => {
@@ -550,26 +558,52 @@ export default function VoiceRecorder() {
     listening: voiceListening,
     transcript: voiceTranscript,
     startListening,
+    stopListening,
   } = useVoice({
     locale: 'en-US',
     mode: VoiceMode.Continuous,
     enablePartialResults: true,
   });
 
+  // Stop voice listening when component mounts if not recording
+  useEffect(() => {
+    if (voiceListening && !recording && stopListening) {
+      console.log('[VoiceRecorder] Stopping voice listening on mount/when not recording');
+      stopListening();
+    }
+  }, [voiceListening, recording, stopListening]);
+
   const startRecording = useCallback(async () => {
     try {
       if (stopPlayback) {
         await stopPlayback();
       }
+      
+      // Simple cleanup - only if we have a recording in state
+      if (recording) {
+        console.log('Cleaning up existing recording...');
+        try {
+          await recording.stopAndUnloadAsync();
+        } catch (cleanupError) {
+          console.log('Cleanup error (ignoring):', cleanupError);
+        }
+        setRecording(null);
+      }
+      
+      // Check permissions
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission needed', 'Please enable microphone access.');
         return;
       }
+      
+      // Check speech recognition
       if (!voiceAvailable) {
         Alert.alert('Speech Recognition Unavailable', 'Voice recognition is not available on this device.');
         return;
       }
+      
+      // Set audio mode
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -578,20 +612,227 @@ export default function VoiceRecorder() {
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
       });
+      
+      // Create and start recording - with metering enabled
+      console.log('Creating new recording...');
       const newRec = new Audio.Recording();
-      await newRec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      console.log('Preparing to record...');
+      
+      // Recording options with metering enabled
+      const recordingOptions = {
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        isMeteringEnabled: true, // Enable audio level monitoring
+      };
+      
+      await newRec.prepareToRecordAsync(recordingOptions);
+      console.log('Starting recording...');
       await newRec.startAsync();
+      console.log('Recording started successfully');
+      
       setRecording(newRec);
       setPendingURI(null);
       setPendingDuration(undefined);
       setPendingTranscription('');
+      
+      // Start audio level monitoring
+      audioLevelInterval.current = setInterval(async () => {
+        try {
+          const status = await newRec.getStatusAsync();
+          if (status.isRecording && status.metering !== undefined) {
+            // Convert metering value to a 0-1 scale for visualization
+            const normalizedLevel = Math.max(0, Math.min(1, (status.metering + 60) / 60));
+            setAudioLevel(normalizedLevel);
+          }
+        } catch (error) {
+          console.log('Error getting audio level:', error);
+        }
+      }, 100); // Update every 100ms
+      
+      // Play start sound and haptic
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      // Start voice recognition after recording is established
       if (voiceAvailable && !voiceListening) {
-        await startListening();
+        // Add small delay to ensure recording is fully started
+        setTimeout(async () => {
+          try {
+            await startListening();
+            console.log('Voice listening started successfully');
+          } catch (voiceError) {
+            console.error('Voice listening failed:', voiceError);
+            // Continue with recording even if voice recognition fails
+          }
+        }, 500);
       }
     } catch (error) {
-      Alert.alert('Recording error', 'Unable to start recording.');
+      console.error('Recording error details:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      Alert.alert('Recording error', `Unable to start recording: ${errorMessage}`);
     }
-  }, [voiceAvailable, voiceListening, startListening, stopPlayback]);
+  }, [voiceAvailable, voiceListening, startListening, stopListening, stopPlayback]);
+
+  const stopRecording = useCallback(async () => {
+    if (!recording) return;
+
+    try {
+      console.log('Stopping recording...');
+      
+      // Stop audio level monitoring
+      if (audioLevelInterval.current) {
+        clearInterval(audioLevelInterval.current);
+        audioLevelInterval.current = null;
+      }
+      setAudioLevel(0);
+      
+      // Stop voice recognition
+      if (voiceListening && stopListening) {
+        console.log('Stopping voice recognition...');
+        await stopListening();
+      }
+
+      // Stop the recording
+      const status = await recording.getStatusAsync();
+      let uri = null;
+      if (status.canRecord && status.isRecording) {
+        await recording.stopAndUnloadAsync();
+        uri = recording.getURI();
+        if (uri) {
+          setPendingURI(uri);
+          setPendingDuration(status.durationMillis);
+          setPendingTranscription(voiceTranscript || '');
+        }
+      }
+
+      setRecording(null);
+      
+      console.log('Recording stopped successfully');
+      
+      // Play stop sound and haptic
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Create new recording entry and open edit form
+      if (uri) {
+        console.log('Creating new recording entry with URI:', uri);
+        
+        const newRecording: Omit<Encounter, "id"> = {
+          title: '',
+          uri: uri,
+          createdDate: new Date().toISOString(),
+          duration: status.durationMillis ? Math.round(status.durationMillis / 1000) : 0,
+          tags: [],
+          place: '',
+          localTranscription: voiceTranscript || '',
+          isTemporary: true // Mark as temporary until saved
+        };
+
+        console.log('[VoiceRecorder] Adding new temporary recording to context:', newRecording);
+        
+        // Add to recordings context as temporary
+        const addedRecording = await addRecording(newRecording);
+        
+        if (addedRecording) {
+          console.log('[VoiceRecorder] Temporary recording added successfully, opening edit form for ID:', addedRecording.id);
+          // Open edit form for the new recording
+          setEditId(addedRecording.id);
+          
+          // Fallback: clear editId if it's still set after 10 seconds (in case something goes wrong)
+          setTimeout(() => {
+            setEditId(current => {
+              if (current === addedRecording.id) {
+                console.log('[VoiceRecorder] Timeout: clearing stuck editId for:', addedRecording.id);
+                return null;
+              }
+              return current;
+            });
+          }, 10000);
+        } else {
+          console.error('[VoiceRecorder] Failed to add recording to context');
+        }
+      }
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      Alert.alert('Error', 'Failed to stop recording');
+    }
+  }, [recording, voiceListening, voiceTranscript, addRecording, setEditId, stopListening]);
+
+  const cancelRecording = useCallback(async () => {
+    try {
+      console.log('Canceling recording...');
+      
+      // Stop audio level monitoring
+      if (audioLevelInterval.current) {
+        clearInterval(audioLevelInterval.current);
+        audioLevelInterval.current = null;
+      }
+      setAudioLevel(0);
+      
+      // Stop voice recognition
+      if (voiceListening && stopListening) {
+        console.log('Stopping voice recognition during cancel...');
+        await stopListening();
+      }
+      
+      // Stop and discard the recording
+      if (recording) {
+        const status = await recording.getStatusAsync();
+        if (status.canRecord) {
+          await recording.stopAndUnloadAsync();
+        }
+      }
+
+      setRecording(null);
+      setPendingURI(null);
+      setPendingDuration(undefined);
+      setPendingTranscription('');
+      
+      console.log('Recording canceled');
+    } catch (error) {
+      console.error('Error canceling recording:', error);
+    }
+  }, [recording, voiceListening, stopListening]);
+
+  // Function to handle canceling edit of temporary recordings
+  // Function to handle canceling edit of temporary recordings
+  const cancelEditTemporaryRecording = useCallback(async (recordingId: string) => {
+    try {
+      console.log('Canceling edit of temporary recording:', recordingId);
+      
+      // Find the recording to check if it's temporary
+      const recording = recordings.find(r => r.id === recordingId);
+      console.log('Found recording:', recording);
+      console.log('Is temporary?', recording?.isTemporary);
+      
+      if (recording && recording.isTemporary) {
+        console.log('Removing temporary recording from context');
+        await deleteRecording(recordingId);
+        console.log('Temporary recording deleted successfully');
+      } else {
+        console.log('Recording is not temporary or not found, just closing edit form');
+      }
+      
+      // Close edit form
+      setEditId(null);
+    } catch (error) {
+      console.error('Error canceling temporary recording:', error);
+    }
+  }, [recordings, deleteRecording]);
+
+  // Function to handle saving temporary recordings (remove temporary flag)
+  const saveTemporaryRecording = useCallback(async (recordingId: string, updates: Partial<Encounter>) => {
+    try {
+      console.log('Saving temporary recording as permanent:', recordingId);
+      
+      // Update the recording with new data and remove temporary flag
+      const finalUpdates = { ...updates, isTemporary: undefined };
+      await updateRecording(recordingId, finalUpdates);
+      
+      // Close edit form
+      setEditId(null);
+    } catch (error) {
+      console.error('Error saving temporary recording:', error);
+      throw error;
+    }
+  }, [updateRecording]);
 
   const recordingListRef = useRef<any>(null);
 
@@ -608,11 +849,17 @@ export default function VoiceRecorder() {
   );
 
 
+  // Throttled transcription update to prevent excessive re-renders
   useEffect(() => {
-    if (recording) {
+    if (!recording || !voiceTranscript) return;
+    
+    const timeoutId = setTimeout(() => {
       setPendingTranscription(voiceTranscript);
-    }
+    }, 200); // Update every 200ms instead of on every character change
+    
+    return () => clearTimeout(timeoutId);
   }, [voiceTranscript, recording]);
+
 
   useEffect(() => {
     if (recording) {
@@ -628,6 +875,20 @@ export default function VoiceRecorder() {
       if (recordingInterval.current) {
         clearInterval(recordingInterval.current);
         recordingInterval.current = null;
+      }
+    };
+  }, [recording]);
+
+  // Cleanup recording on component unmount
+  useEffect(() => {
+    return () => {
+      if (recording) {
+        console.log('Cleaning up recording on unmount...');
+        recording.getStatusAsync().then(status => {
+          if (status.canRecord) {
+            recording.stopAndUnloadAsync().catch(console.error);
+          }
+        }).catch(console.error);
       }
     };
   }, [recording]);
@@ -799,11 +1060,14 @@ export default function VoiceRecorder() {
   // Memoize filtered and sorted recordings only if needed for performance
   const filteredAndSortedRecordings = getFilteredSortedRecordings();
 
-  // --- Search Filtering (restored & upgraded) ---
-  let searchFilteredRecordings = filteredAndSortedRecordings;
-  if (searchQuery?.trim()) {
+  // --- Search Filtering (properly memoized) ---
+  const searchFilteredRecordings = useMemo(() => {
+    if (!searchQuery?.trim()) {
+      return filteredAndSortedRecordings;
+    }
+    
     const q = searchQuery.trim().toLowerCase();
-    searchFilteredRecordings = filteredAndSortedRecordings.filter(rec => {
+    return filteredAndSortedRecordings.filter(rec => {
       // Search in title, place, tags, and localTranscription if present
       const inTitle = rec.title?.toLowerCase().includes(q);
       const inPlace = rec.place?.toLowerCase().includes(q);
@@ -814,14 +1078,12 @@ export default function VoiceRecorder() {
       const inTranscript = rec.localTranscription?.toLowerCase().includes(q);
       return inTitle || inPlace || inTags || inTranscript;
     });
-  }
+  }, [filteredAndSortedRecordings, searchQuery, allTags]);
 
   // Compose recordingsToShow from the above, always up to date
   const recordingsToShow = useMemo(() => {
-    // Log tags for each recording as seen by the UI
-    console.log('[VoiceRecorder][UI] Recordings to render:', (searchFilteredRecordings || filteredAndSortedRecordings || recordings).map(r => ({ id: r.id, tags: r.tags })));
-    return searchFilteredRecordings || filteredAndSortedRecordings || recordings;
-  }, [searchFilteredRecordings, filteredAndSortedRecordings, recordings]);
+    return searchFilteredRecordings;
+  }, [searchFilteredRecordings]);
 
 
 
@@ -952,7 +1214,7 @@ export default function VoiceRecorder() {
 
           {/* Minimal delete handler for RecordingList */}
           <RecordingList
-            key={allTags.map(t => t.id).join(',') + '|' + recordings.map(r => r.id + ':' + (r.tags || []).join(',')).join(';')}
+            key={`recordings-${recordings.length}`}
             // Always use context values for recordings and tags
             recordings={recordingsToShow}
             onDelete={useCallback(async (item) => {
@@ -981,16 +1243,11 @@ export default function VoiceRecorder() {
             position={position}
             duration={duration}
             stopPlayback={stopPlayback}
+            editId={editId}
+            setEditId={setEditId}
+            onCancelTemporary={cancelEditTemporaryRecording}
+            onSaveTemporary={saveTemporaryRecording}
           />
-
-        {/* Floating Plus Button (FAB) */}
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setFabMenuOpen(true)}
-          accessibilityLabel="Open actions menu"
-        >
-          <TagIcon icon="add" size={32} color="#fff" />
-        </TouchableOpacity>
       </View>
     </DrawerLayout>
 
@@ -998,10 +1255,6 @@ export default function VoiceRecorder() {
       <Modal visible={fabMenuOpen} transparent animationType="fade" onRequestClose={() => setFabMenuOpen(false)}>
         <Pressable style={styles.overlay} onPress={() => setFabMenuOpen(false)} />
         <View style={styles.menuCard}>
-          <TouchableOpacity style={styles.actionRow} onPress={() => { setFabMenuOpen(false); setSortTags([]); startRecording(); }}>
-            <TagIcon icon="mic" size={22} color="red" />
-            <Text style={[styles.actionText, { color: 'red', fontWeight: 'bold' }]}>Record New</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionRow}
             onPress={() => { if (!pickingDoc && !pickerCooldown) { setFabMenuOpen(false); handleImportAudio(); } }}
@@ -1083,6 +1336,94 @@ export default function VoiceRecorder() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Recording Interface - Shows when recording */}
+      {recording && (
+        <View style={styles.recordingInterface}>
+          {/* Cancel Button - Top Right */}
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={cancelRecording}
+            activeOpacity={0.7}
+          >
+            <TagIcon icon="close" size={20} color="#999" />
+          </TouchableOpacity>
+          
+          <View style={styles.recordingContent}>
+            <Text style={styles.recordingTitle}>Recording #{recordings.length + 1}</Text>
+            <Text style={styles.recordingDuration}>{Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:{(recordingDuration % 60).toString().padStart(2, '0')}</Text>
+            
+            {/* Simple, Clean Voice Visualization */}
+            <View style={styles.voiceVisualization}>
+              {[...Array(25)].map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.voiceBar,
+                    {
+                      height: audioLevel > 0.1 
+                        ? Math.max(8, audioLevel * 25 + Math.random() * audioLevel * 15 + 8)
+                        : 8,
+                      opacity: audioLevel > 0.1 ? 0.8 : 0.3,
+                    }
+                  ]}
+                />
+              ))}
+            </View>
+            
+            {/* Stop Recording Button */}
+            <TouchableOpacity
+              style={styles.stopRecordButton}
+              onPress={() => {
+                console.log('Stop button pressed');
+                stopRecording();
+              }}
+              activeOpacity={0.8}
+            >
+              <TagIcon icon="stop" size={28} color="white" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Floating Record Button - Only show when NOT recording */}
+      {!recording && (
+        <TouchableOpacity
+          style={[
+            styles.floatingRecordButton, 
+            { 
+              backgroundColor: '#007AFF',
+              zIndex: 9999, // Ensure it's above everything
+            }
+          ]}
+          onPress={() => {
+            console.log('Record button pressed, starting recording');
+            startRecording();
+          }}
+          accessibilityLabel="Start recording"
+          activeOpacity={0.8}
+        >
+          <TagIcon 
+            icon="mic" 
+            size={28} 
+            color="white" 
+          />
+        </TouchableOpacity>
+      )}
+
+      {/* Floating Plus Button (FAB) */}
+      <TouchableOpacity
+        style={[
+          styles.fab,
+          {
+            zIndex: recording ? 999 : 1001, // Behind recording drawer when recording
+          }
+        ]}
+        onPress={() => setFabMenuOpen(true)}
+        accessibilityLabel="Open actions menu"
+      >
+        <TagIcon icon="add" size={32} color="#fff" />
+      </TouchableOpacity>
     </>
   );
 }
@@ -1100,7 +1441,7 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: 28,
+    bottom: 30, // Just above tab bar
     right: 24,
     width: 56,
     height: 56,
@@ -1112,12 +1453,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 8,
-    zIndex: 99,
+    zIndex: 1001, // Above recording drawer
   },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.18)' },
   menuCard: {
     position: 'absolute',
-    bottom: 98,
+    bottom: 100, // Above the FAB
     right: 24,
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -1139,5 +1480,121 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 12,
     color: '#222',
+  },
+  recordButtonContainer: {
+    position: 'absolute',
+    bottom: 90, // Above the tab bar
+    left: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  recordButton: {
+    backgroundColor: '#e53e3e', // Nice red color
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  recordButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  floatingRecordButton: {
+    position: 'absolute',
+    bottom: 100, // Just above the FAB menu
+    right: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2, // More subtle shadow
+    shadowRadius: 8, // Softer shadow
+    shadowOffset: { width: 0, height: 2 }, // Gentle offset
+    elevation: 8, // Moderate elevation for Android
+    zIndex: 1002, // Above everything else
+  },
+  recordingInterface: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -5 },
+    elevation: 10,
+    zIndex: 1000,
+  },
+  cancelButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1001,
+  },
+  recordingContent: {
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    paddingBottom: 40, // Extra padding for tab bar
+    alignItems: 'center',
+  },
+  recordingTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  recordingDuration: {
+    fontSize: 24,
+    fontWeight: '300',
+    color: '#ff4444',
+    marginBottom: 20,
+    fontVariant: ['tabular-nums'],
+  },
+  voiceVisualization: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    height: 40,
+    marginBottom: 24,
+    paddingHorizontal: 40,
+    gap: 4,
+  },
+  voiceBar: {
+    width: 3,
+    backgroundColor: '#ff3b30',
+    borderRadius: 1.5,
+    minHeight: 8,
+  },
+  stopRecordButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#ff4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 8,
   },
 });

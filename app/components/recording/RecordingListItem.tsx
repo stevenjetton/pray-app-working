@@ -273,7 +273,7 @@ const RecordingListItem = React.memo(
                       throw err;
                     }
                   }}
-                  onCancel={() => setEditId(null)}
+                  onCancel={onCancelEdit}
                   loading={isBusy}
                   addCustomTag={addCustomTag}
                   createdDate={editCreatedDate ?? new Date().toISOString()}
@@ -294,12 +294,9 @@ const RecordingListItem = React.memo(
                   ellipsizeMode="tail"
                 />
                 <View style={styles.tagsRow}>
-                  {(() => {
-                    // Log the tags and allTags for this item
-                    console.log('[RecordingListItem][UI] Render tags for item', item.id, 'item.tags:', item.tags, 'allTags:', allTags.map(t => ({ id: t.id, label: t.label })));
-                    return item.tags &&
-                      item.tags.length > 0 &&
-                      item.tags.map(tagId => {
+                  {item.tags &&
+                    item.tags.length > 0 &&
+                    item.tags.map(tagId => {
                         const tagObj = allTags.find(t => t.id === tagId);
                         if (!tagObj) return null;
                         return (
@@ -308,8 +305,7 @@ const RecordingListItem = React.memo(
                             <Text style={[styles.tagText, { color: '#fff' }]}>{tagObj.label}</Text>
                           </View>
                         );
-                      });
-                  })()}
+                      })}
                 </View>
               </View>
               {/* Show snippet under title if searching and match found */}

@@ -158,11 +158,35 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
         await new Promise((resolve) => setTimeout(resolve, 400)); // Wait a bit
 
+        // Ensure audio mode is properly configured for playback
+        try {
+          console.log('[PlaybackContext] Configuring audio mode for playback');
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: false,
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: false,
+            shouldDuckAndroid: false,
+            playThroughEarpieceAndroid: false,
+            interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+          });
+        } catch (audioModeError) {
+          console.warn('[PlaybackContext] Error setting audio mode for playback:', audioModeError);
+        }
+
   // [PlaybackContext] Starting playback for recording: recording.id
         try {
-          const { sound } = await Audio.Sound.createAsync({ uri: recording.uri }, { shouldPlay: true });
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: recording.uri }, 
+            { 
+              shouldPlay: true,
+              volume: 1.0,
+              rate: 1.0,
+              shouldCorrectPitch: false,
+            }
+          );
           soundRef.current = sound;
           setIsPlaying(true);
+          // Ensure volume is set to maximum
           await soundRef.current.setVolumeAsync(1.0);
 
           sound.setOnPlaybackStatusUpdate(async (status: AVPlaybackStatus) => {
@@ -238,9 +262,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
           staysActiveInBackground: false,
-          shouldDuckAndroid: true,
+          shouldDuckAndroid: false,
           playThroughEarpieceAndroid: false,
-          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
         });
       } catch (e) {
         console.warn('[PlaybackContext] Error configuring audio mode:', e);
