@@ -268,7 +268,7 @@ export default function VoiceRecorder() {
 
   // Update sortTags when params.tag changes, but only if the tag still exists
   useEffect(() => {
-    console.log('[VoiceRecorder] useEffect for params.tag - current params:', params);
+    console.log('[VoiceRecorder] useEffect for params.tag - current params:', params, 'current sortTags:', sortTags);
     
     // First check if we have a "just_deleted_tag" flag in AsyncStorage
     const checkDeletedTagFlag = async () => {
@@ -287,6 +287,7 @@ export default function VoiceRecorder() {
     };
     
     checkDeletedTagFlag().then(wasDeleted => {
+      console.log('[VoiceRecorder] CheckDeletedTag result:', wasDeleted);
       if (wasDeleted) {
         // Skip the rest of the effect if we just deleted a tag
         return;
@@ -298,7 +299,7 @@ export default function VoiceRecorder() {
         
         // Only set the filter if the tag exists in allTags
         if (tagId && allTags.some(t => t.id === tagId)) {
-          console.log('[VoiceRecorder] Setting sortTags to:', [tagId]);
+          console.log('[VoiceRecorder] Setting sortTags to:', [tagId], 'from previous:', sortTags);
           setSortTags([tagId]);
           return;
         }
@@ -732,8 +733,15 @@ export default function VoiceRecorder() {
         
         if (addedRecording) {
           console.log('[VoiceRecorder] Temporary recording added successfully, opening edit form for ID:', addedRecording.id);
+          console.log('[VoiceRecorder] Current editId before setting:', editId);
+          
           // Open edit form for the new recording
           setEditId(addedRecording.id);
+          
+          // Add verification that editId was set
+          setTimeout(() => {
+            console.log('[VoiceRecorder] Verification: editId after setting:', editId);
+          }, 100);
           
           // Fallback: clear editId if it's still set after 10 seconds (in case something goes wrong)
           setTimeout(() => {
@@ -985,11 +993,19 @@ export default function VoiceRecorder() {
   );
 
   const getFilteredSortedRecordings = useCallback((): Encounter[] => {
+    console.log('[VoiceRecorder] getFilteredSortedRecordings called with sortTags:', sortTags, 'recordings count:', recordings.length);
     let items = recordings;
     if (sortTags.length) {
+      const beforeFilter = items.length;
       items = items.filter(rec =>
-        Array.isArray(rec.tags) && rec.tags.some(tag => sortTags.includes(tag))
+        // Always show temporary recordings regardless of tag filters
+        rec.isTemporary || 
+        (Array.isArray(rec.tags) && rec.tags.some(tag => sortTags.includes(tag)))
       );
+      console.log('[VoiceRecorder] Filter applied - before:', beforeFilter, 'after:', items.length, 'filtered out:', beforeFilter - items.length);
+      console.log('[VoiceRecorder] Items filtered out:', recordings.filter(rec => 
+        !rec.isTemporary && !(Array.isArray(rec.tags) && rec.tags.some(tag => sortTags.includes(tag)))
+      ).map(rec => ({ id: rec.id, title: rec.title, tags: rec.tags })));
     }
 
     const dir = sortAsc ? 1 : -1;
