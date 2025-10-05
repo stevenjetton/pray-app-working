@@ -46,21 +46,27 @@ const addRecording = async (rec: Omit<Encounter, "id">): Promise<Encounter | nul
 };
 
 const updateRecording = async (id: string, updates: Partial<Encounter>) => {
+  console.log('[RecordingContext] updateRecording called with:', { id, updates });
+  
   // Save previous state snapshot for rollback in case of failure
   let prevRecordings: Encounter[] = [];
   setRecordings((prev) => {
     prevRecordings = prev;
     // Optimistically update local state
-    return prev.map(rec =>
+    const updated = prev.map(rec =>
       rec.id === id ? { ...rec, ...updates } : rec
     );
+    console.log('[RecordingContext] Optimistically updated recording:', updated.find(r => r.id === id));
+    return updated;
   });
 
   try {
     // Attempt backend/local storage update
     await LocalService.updateRecording(id, updates);
+    console.log('[RecordingContext] LocalService.updateRecording succeeded');
     // Refresh recordings to sync with backend precisely
     await refreshRecordings();
+    console.log('[RecordingContext] Recordings refreshed successfully');
   } catch (e) {
     console.error(`Failed to update recording ${id}:`, e);
     // Rollback state to previous if update fails

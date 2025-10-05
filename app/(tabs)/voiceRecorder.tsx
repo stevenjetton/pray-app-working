@@ -820,11 +820,17 @@ export default function VoiceRecorder() {
   // Function to handle saving temporary recordings (remove temporary flag)
   const saveTemporaryRecording = useCallback(async (recordingId: string, updates: Partial<Encounter>) => {
     try {
-      console.log('Saving temporary recording as permanent:', recordingId);
+      console.log('[VoiceRecorder] Saving temporary recording as permanent:', recordingId);
+      console.log('[VoiceRecorder] Updates being applied:', { 
+        title: updates.title, 
+        place: updates.place, 
+        tags: updates.tags 
+      });
       
       // Update the recording with new data and remove temporary flag
       const finalUpdates = { ...updates, isTemporary: undefined };
       await updateRecording(recordingId, finalUpdates);
+      console.log('[VoiceRecorder] Recording updated successfully');
       
       // Close edit form
       setEditId(null);

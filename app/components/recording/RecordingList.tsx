@@ -119,10 +119,30 @@ const RecordingList = ({
   const handleSetExpandedId = useCallback((value: React.SetStateAction<string | null>) => setExpandedId(value), []);
   const handleSetEditId = useCallback((value: React.SetStateAction<string | null>) => setEditId(value), []);
   const handleSetPopoverId = useCallback((value: React.SetStateAction<string | null>) => setPopoverId(value), []);
-  const handleSetEditTitle = useCallback((value: React.SetStateAction<string>) => setEditTitle(value), []);
-  const handleSetEditTags = useCallback((value: React.SetStateAction<string[]>) => setEditTags(value), []);
-  const handleSetEditPlace = useCallback((value: React.SetStateAction<string>) => setEditPlace(value), []);
+  const handleSetEditTitle = useCallback((value: React.SetStateAction<string>) => {
+    console.log('[RecordingList] handleSetEditTitle called with:', value);
+    setEditTitle(value);
+  }, []);
+  const handleSetEditTags = useCallback((value: React.SetStateAction<string[]>) => {
+    console.log('[RecordingList] handleSetEditTags called with:', value);
+    setEditTags(value);
+  }, []);
+  const handleSetEditPlace = useCallback((value: React.SetStateAction<string>) => {
+    console.log('[RecordingList] handleSetEditPlace called with:', value);
+    setEditPlace(value);
+  }, []);
   const handleSetEditCreatedDate = useCallback((value: React.SetStateAction<string>) => setEditCreatedDate(value), []);
+  const handleToggleEditTag = useCallback((tagId: string) => {
+    console.log('[RecordingList] handleToggleEditTag called with:', tagId);
+    setEditTags(currentTags => {
+      const newTags = currentTags.includes(tagId) 
+        ? currentTags.filter(t => t !== tagId)
+        : [...currentTags, tagId];
+      console.log('[RecordingList] handleToggleEditTag - new tags:', newTags);
+      return newTags;
+    });
+  }, []);
+
   const handleStartEdit = useCallback((item: Encounter) => {
     setEditId(item.id);
     setEditTitle(item.title);
@@ -220,7 +240,7 @@ const RecordingList = ({
                 throw err;
               }
             }}
-            toggleEditTag={() => {}}
+            toggleEditTag={handleToggleEditTag}
             setEditTitle={handleSetEditTitle}
             setEditTags={handleSetEditTags}
             setEditPlace={handleSetEditPlace}
@@ -245,6 +265,7 @@ const RecordingList = ({
       scrollEventThrottle={16}
       bounces={true}
       alwaysBounceVertical={true}
+      contentContainerStyle={{ paddingBottom: 100 }} // Added bottom padding for swipe access
     />
   );
 };

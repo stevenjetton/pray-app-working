@@ -31,8 +31,11 @@ type Props = {
 
 const EditRecordingForm = ({
   title,
+  setTitle,
   place,
+  setPlace,
   tags,
+  toggleTag,
   defaultTags,
   onSave,
   onCancel,
@@ -43,17 +46,34 @@ const EditRecordingForm = ({
 }: Props) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Local controlled state to hold edits
+  // Use local state with proper synchronization
   const [localTitle, setLocalTitle] = useState(title || '');
   const [localPlace, setLocalPlace] = useState(place || '');
   const [localTags, setLocalTags] = useState(tags || []);
 
-  // Sync prop changes into local state (e.g., when a different recording is loaded for editing)
+  // Sync props to local state when they change
   useEffect(() => {
+    console.log('[EditRecordingForm] Props changed, syncing to local state:', { title, place, tags });
     setLocalTitle(title || '');
     setLocalPlace(place || '');
     setLocalTags(tags || []);
   }, [title, place, tags]);
+
+  // Update parent state when local values change
+  useEffect(() => {
+    console.log('[EditRecordingForm] Local title changed, updating parent:', localTitle);
+    setTitle(localTitle);
+  }, [localTitle, setTitle]);
+
+  useEffect(() => {
+    console.log('[EditRecordingForm] Local place changed, updating parent:', localPlace);
+    setPlace(localPlace);
+  }, [localPlace, setPlace]);
+
+  useEffect(() => {
+    console.log('[EditRecordingForm] Local tags changed, updating parent:', localTags);
+    // Don't update parent tags directly, use individual toggle calls
+  }, [localTags]);
 
   // Refs for input focus
   const titleInputRef = useRef<TextInput>(null);
@@ -93,22 +113,29 @@ const EditRecordingForm = ({
     });
   };
 
-  // Toggle tag in localTags (immutable update)
+  // Toggle tag in local state and sync to parent
   const toggleLocalTag = (tagId: string) => {
-    if (!localTags) {
-      setLocalTags([tagId]);
-      return;
-    }
-    
-    if (localTags.includes(tagId)) {
-      setLocalTags(localTags.filter(t => t !== tagId));
-    } else {
-      setLocalTags([...localTags, tagId]);
-    }
+    console.log('[EditRecordingForm] toggleLocalTag called with:', tagId);
+    setLocalTags(currentTags => {
+      const newTags = currentTags.includes(tagId) 
+        ? currentTags.filter(t => t !== tagId)
+        : [...currentTags, tagId];
+      console.log('[EditRecordingForm] Local tags updated:', newTags);
+      
+      // Also update parent
+      toggleTag(tagId);
+      
+      return newTags;
+    });
   };
 
-  // Save handler using local state with logging
+  // Save handler using parent state values
   const onSavePress = () => {
+    console.log('[EditRecordingForm] onSavePress called with values:', { 
+      title: localTitle, 
+      place: localPlace, 
+      tags: localTags 
+    });
     onSave(localTitle || '', localPlace || '', localTags || []);
   };
 
@@ -121,7 +148,10 @@ const EditRecordingForm = ({
           ref={titleInputRef}
           style={styles.inputFlex}
           value={localTitle || ''}
-          onChangeText={setLocalTitle}
+          onChangeText={(text) => {
+            console.log('[EditRecordingForm] Title TextInput onChangeText:', text);
+            setLocalTitle(text);
+          }}
           placeholder="Recording title"
           editable={!loading}
         />
@@ -147,7 +177,10 @@ const EditRecordingForm = ({
           ref={placeInputRef}
           style={styles.inputFlex}
           value={localPlace || ''}
-          onChangeText={setLocalPlace}
+          onChangeText={(text) => {
+            console.log('[EditRecordingForm] Place TextInput onChangeText:', text);
+            setLocalPlace(text);
+          }}
           placeholder="Place"
           editable={!loading}
         />
