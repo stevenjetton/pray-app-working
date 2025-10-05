@@ -2,10 +2,13 @@ import { PlaybackProgressRow } from '@/components/playback/PlaybackProgressRow';
 import type { Encounter } from '@/types/Encounter';
 import type { Tag } from '@/types/Tags';
 import { formatDateForDisplay } from '@/utils/dateHelpers';
+import { Ionicons } from '@expo/vector-icons';
 import HighlightText from '@sanar/react-native-highlight-text';
+import * as Haptics from 'expo-haptics';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Collapsible from 'react-native-collapsible';
+import { Swipeable } from 'react-native-gesture-handler';
 import Popover from 'react-native-popover-view';
 
 import EditRecordingForm from '@/components/recording/EditRecordingForm';
@@ -130,6 +133,13 @@ const RecordingListItem = React.memo(
   }: Props) => {
   // [RecordingListItem] Render start - id: item.id, isEditing: isEditing, expanded: expanded, editTitle: editTitle, editPlace: editPlace
 
+    // Swipeable ref for controlling swipe actions
+    const swipeableRef = useRef<Swipeable>(null);
+    
+    // Track swipe state to prevent accidental touches
+    const [, setIsSwipeActive] = useState(false);
+    const swipeActiveRef = useRef(false);
+
     const [, setLocalEditCreatedDate] = useState<string>(
       item.createdDate ?? new Date().toISOString(),
     );
@@ -194,6 +204,12 @@ const RecordingListItem = React.memo(
     }
 
     const onRecordingPress = async () => {
+      // Prevent touch action if swipe is active
+      if (swipeActiveRef.current) {
+        console.log('[RecordingListItem] Ignoring touch - swipe is active');
+        return;
+      }
+      
       if (editId && editId !== item.id) {
         // [VoiceRecorder] Edit is active on different recording, cancelling edit to switch
         onCancelEdit();
@@ -232,17 +248,89 @@ const RecordingListItem = React.memo(
       return '';
     }, [searchQuery, item.cloudTranscription, item.localTranscription]);
 
+    // Handle delete action
+    const handleDeletePress = () => {
+      console.log('[RecordingListItem] Delete pressed - clearing swipe state');
+      // Add haptic feedback
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      // Clear swipe state immediately
+      setIsSwipeActive(false);
+      swipeActiveRef.current = false;
+      // Close the swipeable first
+      swipeableRef.current?.close();
+      // Call the delete handler
+      handleDelete(item);
+    };
+
+    // Handle swipe progress for haptic feedback
+
+    // Render the delete action that appears on swipe
+    const renderRightActions = () => {
+      return (
+        <TouchableOpacity
+          style={styles.deleteAction}
+          onPress={handleDeletePress}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete recording ${item.title || 'Untitled'}`}
+        >
+          <Ionicons name="trash" size={20} color="#ffffff" />
+          <Text style={styles.deleteActionText}>Delete</Text>
+        </TouchableOpacity>
+      );
+    };
+
 
 
 
     return (
-      <View accessible accessibilityLabel={`Recording ${item.title || 'Untitled'}`} style={[index === 0 && styles.firstRecordingItem]}>
-        <TouchableOpacity
-          onPress={onRecordingPress}
-          style={[styles.recordingItem, expanded && styles.recordingItemNoBorder]}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={`Expand or collapse recording ${item.title || 'Untitled'}`}
+      <Swipeable
+        ref={swipeableRef}
+        renderRightActions={renderRightActions}
+        rightThreshold={60} // Slightly higher threshold
+        friction={1.5} // Slightly less friction for smoother feel
+        overshootRight={false} // Prevent overshooting past the action
+        onSwipeableRightWillOpen={() => {
+          console.log('[RecordingListItem] Right swipe will open - setting swipe active');
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setIsSwipeActive(true);
+          swipeActiveRef.current = true;
+        }}
+        onSwipeableWillOpen={(direction) => {
+          console.log('[RecordingListItem] Swipe will open, direction:', direction);
+          // Set swipe active when any swipe starts
+          setIsSwipeActive(true);
+          swipeActiveRef.current = true;
+        }}
+        onSwipeableClose={() => {
+          console.log('[RecordingListItem] Swipe closed - clearing swipe active after delay');
+          // Clear swipe state after a short delay to prevent immediate touch
+          setTimeout(() => {
+            setIsSwipeActive(false);
+            swipeActiveRef.current = false;
+          }, 150); // Increased delay slightly
+        }}
+        onSwipeableOpen={() => {
+          console.log('[RecordingListItem] Swipe opened - keeping swipe active');
+          swipeActiveRef.current = true;
+        }}
+      >
+        <View accessible accessibilityLabel={`Recording ${item.title || 'Untitled'}`} style={[
+          { backgroundColor: '#ffffff' }, 
+          index === 0 && styles.firstRecordingItem
+        ]}>
+          <TouchableOpacity
+            onPress={onRecordingPress}
+            onPressIn={() => {
+              // If swipe is active, prevent any press interaction
+              if (swipeActiveRef.current) {
+                return false;
+              }
+            }}
+            style={[styles.recordingItem, expanded && styles.recordingItemNoBorder]}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Expand or collapse recording ${item.title || 'Untitled'}`}
           testID={`expand-row-${item.id}`}
         >
           {isEditing ? (
@@ -257,6 +345,12 @@ const RecordingListItem = React.memo(
                   toggleTag={toggleEditTag}
                   defaultTags={allTags}
                   onSave={async (title, place, tags) => {
+                    console.log('[RecordingListItem] onSave called with:', { title, place, tags });
+                    console.log('[RecordingListItem] Current parent state values:', { 
+                      editTitle, 
+                      editPlace, 
+                      editTags 
+                    });
                     const updatedEncounter: Encounter = {
                       ...item,
                       title,
@@ -264,7 +358,12 @@ const RecordingListItem = React.memo(
                       place,
                       createdDate: editCreatedDate ?? new Date().toISOString(),
                     };
-                    console.log('[RecordingListItem] onSaveEdit', { updatedEncounter });
+                    console.log('[RecordingListItem] onSaveEdit - Final updatedEncounter:', { 
+                      id: updatedEncounter.id,
+                      title: updatedEncounter.title, 
+                      place: updatedEncounter.place, 
+                      tags: updatedEncounter.tags 
+                    });
                     try {
                       await saveEdit(updatedEncounter, updatedEncounter.createdDate ?? new Date().toISOString());
                       console.log('[RecordingListItem] saveEdit success');
@@ -273,7 +372,7 @@ const RecordingListItem = React.memo(
                       throw err;
                     }
                   }}
-                  onCancel={() => setEditId(null)}
+                  onCancel={onCancelEdit}
                   loading={isBusy}
                   addCustomTag={addCustomTag}
                   createdDate={editCreatedDate ?? new Date().toISOString()}
@@ -294,12 +393,9 @@ const RecordingListItem = React.memo(
                   ellipsizeMode="tail"
                 />
                 <View style={styles.tagsRow}>
-                  {(() => {
-                    // Log the tags and allTags for this item
-                    console.log('[RecordingListItem][UI] Render tags for item', item.id, 'item.tags:', item.tags, 'allTags:', allTags.map(t => ({ id: t.id, label: t.label })));
-                    return item.tags &&
-                      item.tags.length > 0 &&
-                      item.tags.map(tagId => {
+                  {item.tags &&
+                    item.tags.length > 0 &&
+                    item.tags.map(tagId => {
                         const tagObj = allTags.find(t => t.id === tagId);
                         if (!tagObj) return null;
                         return (
@@ -308,8 +404,7 @@ const RecordingListItem = React.memo(
                             <Text style={[styles.tagText, { color: '#fff' }]}>{tagObj.label}</Text>
                           </View>
                         );
-                      });
-                  })()}
+                      })}
                 </View>
               </View>
               {/* Show snippet under title if searching and match found */}
@@ -478,6 +573,7 @@ const RecordingListItem = React.memo(
           </View>
         </Collapsible>
       </View>
+      </Swipeable>
     );
   },
   (prevProps, nextProps) => {
@@ -536,6 +632,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomColor: '#ddd',
     borderBottomWidth: 1,
+    backgroundColor: '#ffffff',
   },
   recordingItemNoBorder: {
     borderBottomWidth: 0,
@@ -555,6 +652,7 @@ const styles = StyleSheet.create({
     elevation: 1,
     borderBottomWidth: 1,
     borderBottomColor: '#ddd',
+    backgroundColor: '#ffffff',
   },
   drawerRow: {
     flexDirection: 'row',
@@ -705,6 +803,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: 'flex-end',
     flex: 1,
+    paddingRight: 8, // Added padding to align with tags
   },
   length: {
     fontSize: 14,
@@ -745,5 +844,19 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  deleteAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
+    backgroundColor: '#e53935',
+    paddingHorizontal: 10,
+  },
+  deleteActionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

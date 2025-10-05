@@ -6,7 +6,7 @@
 import { useRecordings } from '@/context/RecordingContext';
 import { useTags } from '@/context/TagsContext';
 import { Encounter } from '@/types/Encounter';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, ListRenderItemInfo, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import RecordingListItem from './RecordingListItem';
 
@@ -27,6 +27,11 @@ type Props = {
   position: number;
   duration: number;
   stopPlayback: () => Promise<void>;
+  editId: string | null;
+  setEditId: React.Dispatch<React.SetStateAction<string | null>>;
+  // Callbacks for handling temporary recordings
+  onCancelTemporary?: (recordingId: string) => Promise<void>;
+  onSaveTemporary?: (recordingId: string, updates: Partial<Encounter>) => Promise<void>;
 };
 
 
@@ -45,12 +50,15 @@ const RecordingList = ({
   position,
   duration,
   stopPlayback,
+  editId,
+  setEditId,
+  onCancelTemporary,
+  onSaveTemporary,
 }: Omit<Props, 'setRecordings'> & { onScroll?: (e: any) => void }) => {
   // Get updateRecording at the top level (fix invalid hook call)
   const { updateRecording } = useRecordings();
   // Restore all original interactive state/logic
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [editId, setEditId] = useState<string | null>(null);
   const [popoverId, setPopoverId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editTags, setEditTags] = useState<string[]>([]);
@@ -63,7 +71,6 @@ const RecordingList = ({
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const currentScrollY = e.nativeEvent.contentOffset.y;
-    const deltaY = currentScrollY - lastScrollY.current;
     scrollY.current = currentScrollY;
     lastScrollY.current = currentScrollY;
 
@@ -112,10 +119,30 @@ const RecordingList = ({
   const handleSetExpandedId = useCallback((value: React.SetStateAction<string | null>) => setExpandedId(value), []);
   const handleSetEditId = useCallback((value: React.SetStateAction<string | null>) => setEditId(value), []);
   const handleSetPopoverId = useCallback((value: React.SetStateAction<string | null>) => setPopoverId(value), []);
-  const handleSetEditTitle = useCallback((value: React.SetStateAction<string>) => setEditTitle(value), []);
-  const handleSetEditTags = useCallback((value: React.SetStateAction<string[]>) => setEditTags(value), []);
-  const handleSetEditPlace = useCallback((value: React.SetStateAction<string>) => setEditPlace(value), []);
+  const handleSetEditTitle = useCallback((value: React.SetStateAction<string>) => {
+    console.log('[RecordingList] handleSetEditTitle called with:', value);
+    setEditTitle(value);
+  }, []);
+  const handleSetEditTags = useCallback((value: React.SetStateAction<string[]>) => {
+    console.log('[RecordingList] handleSetEditTags called with:', value);
+    setEditTags(value);
+  }, []);
+  const handleSetEditPlace = useCallback((value: React.SetStateAction<string>) => {
+    console.log('[RecordingList] handleSetEditPlace called with:', value);
+    setEditPlace(value);
+  }, []);
   const handleSetEditCreatedDate = useCallback((value: React.SetStateAction<string>) => setEditCreatedDate(value), []);
+  const handleToggleEditTag = useCallback((tagId: string) => {
+    console.log('[RecordingList] handleToggleEditTag called with:', tagId);
+    setEditTags(currentTags => {
+      const newTags = currentTags.includes(tagId) 
+        ? currentTags.filter(t => t !== tagId)
+        : [...currentTags, tagId];
+      console.log('[RecordingList] handleToggleEditTag - new tags:', newTags);
+      return newTags;
+    });
+  }, []);
+
   const handleStartEdit = useCallback((item: Encounter) => {
     setEditId(item.id);
     setEditTitle(item.title);
@@ -123,6 +150,25 @@ const RecordingList = ({
     setEditPlace(item.place || '');
     setEditCreatedDate(item.createdDate || '');
   }, []);
+
+  // Auto-initialize edit fields when editId changes (e.g., when set programmatically)
+  useEffect(() => {
+    if (editId) {
+      const item = recordings.find(r => r.id === editId);
+      if (item) {
+        setEditTitle(item.title || '');
+        setEditTags(item.tags || []);
+        setEditPlace(item.place || '');
+        setEditCreatedDate(item.createdDate || new Date().toISOString());
+      }
+    } else {
+      // Clear edit fields when not editing
+      setEditTitle('');
+      setEditTags([]);
+      setEditPlace('');
+      setEditCreatedDate('');
+    }
+  }, [editId, recordings]);
   // Return a valid Tag object (update as needed for your Tag type)
   const handleAddCustomTag = useCallback(async (label: string) => {
     return {
@@ -132,7 +178,18 @@ const RecordingList = ({
       iconFamily: 'Ionicons' as any,
     };
   }, []);
-  const handleOnCancelEdit = useCallback(() => setEditId(null), []);
+  const handleOnCancelEdit = useCallback(async () => {
+    if (editId && onCancelTemporary) {
+      // Check if the recording being edited is temporary
+      const recording = recordings.find(r => r.id === editId);
+      if (recording && recording.isTemporary) {
+        await onCancelTemporary(editId);
+        return; // onCancelTemporary handles setting editId to null
+      }
+    }
+    // For regular recordings, just close the edit form
+    setEditId(null);
+  }, [editId, recordings, onCancelTemporary]);
 
   // Restore tags context for tag display
   const { tags: allTags } = useTags();
@@ -166,16 +223,24 @@ const RecordingList = ({
             saveEdit={async (updatedItem, createdDate) => {
               console.log('[RecordingList] saveEdit called', { updatedItem, createdDate });
               try {
-                await updateRecording(updatedItem.id, { ...updatedItem, createdDate });
-                console.log('[RecordingList] updateRecording success');
+                // Check if this is a temporary recording
+                const recording = recordings.find(r => r.id === updatedItem.id);
+                if (recording && recording.isTemporary && onSaveTemporary) {
+                  console.log('[RecordingList] Saving temporary recording as permanent');
+                  await onSaveTemporary(updatedItem.id, { ...updatedItem, createdDate });
+                } else {
+                  console.log('[RecordingList] About to call updateRecording with:', updatedItem.id, { ...updatedItem, createdDate });
+                  await updateRecording(updatedItem.id, { ...updatedItem, createdDate });
+                  console.log('[RecordingList] updateRecording success, closing edit form');
+                  setEditId(null);
+                  setExpandedId(null);
+                }
               } catch (err) {
-                console.error('[RecordingList] ERROR in updateRecording:', err);
+                console.error('[RecordingList] ERROR in saveEdit:', err);
                 throw err;
               }
-              setEditId(null);
-              setExpandedId(null);
             }}
-            toggleEditTag={() => {}}
+            toggleEditTag={handleToggleEditTag}
             setEditTitle={handleSetEditTitle}
             setEditTags={handleSetEditTags}
             setEditPlace={handleSetEditPlace}
@@ -200,6 +265,7 @@ const RecordingList = ({
       scrollEventThrottle={16}
       bounces={true}
       alwaysBounceVertical={true}
+      contentContainerStyle={{ paddingBottom: 100 }} // Added bottom padding for swipe access
     />
   );
 };

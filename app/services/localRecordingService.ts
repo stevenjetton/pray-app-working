@@ -35,9 +35,17 @@ export async function addRecording(recording: Omit<Encounter, 'id'> & { id?: str
 
 // Update an existing recording
 export async function updateRecording(id: string, updates: Partial<Encounter>): Promise<Encounter[]> {
+  console.log('[LocalService] updateRecording called with:', { id, updates });
   const recordings = await getAllRecordings();
+  const existingRecording = recordings.find(r => r.id === id);
+  console.log('[LocalService] Existing recording before update:', existingRecording);
+  
   const newRecordings = recordings.map(r => r.id === id ? { ...r, ...updates } : r);
+  const updatedRecording = newRecordings.find(r => r.id === id);
+  console.log('[LocalService] Recording after update:', updatedRecording);
+  
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newRecordings));
+  console.log('[LocalService] Data saved to AsyncStorage successfully');
   return newRecordings;
 }
 

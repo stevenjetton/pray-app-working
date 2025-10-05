@@ -28,4 +28,7 @@ export type Encounter = {
   dropboxFileId?: string;    // Dropbox unique file identifier, e.g., "id:abc123"
   dropboxRev?: string;       // Dropbox file revision identifier
   dropboxModified?: number;  // Dropbox server_modified/client_modified in ms (epoch)
+  
+  // Temporary recording flag (removed when saved)
+  isTemporary?: boolean;
 };
