@@ -137,7 +137,7 @@ const RecordingListItem = React.memo(
     const swipeableRef = useRef<Swipeable>(null);
     
     // Track swipe state to prevent accidental touches
-    const [, setIsSwipeActive] = useState(false);
+    const [isSwipeActive, setIsSwipeActive] = useState(false);
     const swipeActiveRef = useRef(false);
 
     const [, setLocalEditCreatedDate] = useState<string>(
@@ -204,12 +204,6 @@ const RecordingListItem = React.memo(
     }
 
     const onRecordingPress = async () => {
-      // Prevent touch action if swipe is active
-      if (swipeActiveRef.current) {
-        console.log('[RecordingListItem] Ignoring touch - swipe is active');
-        return;
-      }
-      
       if (editId && editId !== item.id) {
         // [VoiceRecorder] Edit is active on different recording, cancelling edit to switch
         onCancelEdit();
@@ -290,25 +284,31 @@ const RecordingListItem = React.memo(
         rightThreshold={60} // Slightly higher threshold
         friction={1.5} // Slightly less friction for smoother feel
         overshootRight={false} // Prevent overshooting past the action
-        onSwipeableRightWillOpen={() => {
-          console.log('[RecordingListItem] Right swipe will open - setting swipe active');
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          setIsSwipeActive(true);
-          swipeActiveRef.current = true;
-        }}
         onSwipeableWillOpen={(direction) => {
           console.log('[RecordingListItem] Swipe will open, direction:', direction);
           // Set swipe active when any swipe starts
           setIsSwipeActive(true);
           swipeActiveRef.current = true;
         }}
+        onSwipeableRightWillOpen={() => {
+          console.log('[RecordingListItem] Right swipe will open - setting swipe active');
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setIsSwipeActive(true);
+          swipeActiveRef.current = true;
+        }}
+        onSwipeableRightOpen={() => {
+          console.log('[RecordingListItem] Right swipe opened - ensuring swipe remains active');
+          setIsSwipeActive(true);
+          swipeActiveRef.current = true;
+        }}
         onSwipeableClose={() => {
           console.log('[RecordingListItem] Swipe closed - clearing swipe active after delay');
-          // Clear swipe state after a short delay to prevent immediate touch
+          // Clear swipe state after a longer delay to prevent immediate touch
           setTimeout(() => {
             setIsSwipeActive(false);
             swipeActiveRef.current = false;
-          }, 150); // Increased delay slightly
+            console.log('[RecordingListItem] Swipe state cleared');
+          }, 300); // Increased delay to 300ms
         }}
         onSwipeableOpen={() => {
           console.log('[RecordingListItem] Swipe opened - keeping swipe active');
@@ -320,10 +320,18 @@ const RecordingListItem = React.memo(
           index === 0 && styles.firstRecordingItem
         ]}>
           <TouchableOpacity
-            onPress={onRecordingPress}
+            onPress={() => {
+              // Double-check swipe state before executing press
+              if (swipeActiveRef.current || isSwipeActive) {
+                console.log('[RecordingListItem] onPress blocked - swipe is active');
+                return;
+              }
+              onRecordingPress();
+            }}
             onPressIn={() => {
               // If swipe is active, prevent any press interaction
-              if (swipeActiveRef.current) {
+              if (swipeActiveRef.current || isSwipeActive) {
+                console.log('[RecordingListItem] onPressIn blocked - swipe is active');
                 return false;
               }
             }}
