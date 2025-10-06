@@ -92,28 +92,28 @@ export default function VoiceRecorder() {
   // Get tag param from router
   const { tags: allTags, addTag, refreshTags } = useTags();
 
-  // iOS Messages-style search bar with continuous pull gesture
+  // iOS Messages-style search bar with slide-behind animation
   const [searchBarVisible, setSearchBarVisible] = useState(false);
-  const searchBarHeight = useRef(new Animated.Value(0)).current;
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
+  const contentMarginTop = useRef(new Animated.Value(12 + SEARCH_BAR_HEIGHT)).current; // Start below search bar
 
   useEffect(() => {
-    // Smooth easing animation like iOS Messages - no spring bounce
+    // Slide animation - content margin changes to reveal/hide search bar
     Animated.parallel([
-      Animated.timing(searchBarHeight, {
-        toValue: searchBarVisible ? 58 : 0,
-        useNativeDriver: false,
-        duration: 250,
+      Animated.timing(contentMarginTop, {
+        toValue: searchBarVisible ? 12 + SEARCH_BAR_HEIGHT : 12, // More margin when search visible, less when hidden
+        useNativeDriver: false, // Can't use native driver for margin
+        duration: 300,
         easing: Easing.out(Easing.cubic),
       }),
       Animated.timing(searchBarOpacity, {
         toValue: searchBarVisible ? 1 : 0,
-        useNativeDriver: false,
+        useNativeDriver: true,
         duration: 250,
-        easing: Easing.out(Easing.cubic),
+        easing: Easing.out(Easing.quad),
       }),
     ]).start();
-  }, [searchBarVisible, searchBarHeight, searchBarOpacity]);
+  }, [searchBarVisible, contentMarginTop, searchBarOpacity]);
 
   // iOS Messages-style search bar handlers
   const handleRevealSearchBar = useCallback(() => {
@@ -1200,16 +1200,17 @@ export default function VoiceRecorder() {
         )}
       >
         <View style={styles.container}>
-          {/* Pull-to-reveal search bar above the list with smooth animation */}
+          {/* Search bar positioned behind the list */}
           <Animated.View 
             style={{ 
-              width: '100%', 
-              marginTop: 12, 
-              backgroundColor: '#fff', 
-              height: searchBarHeight,
+              position: 'absolute',
+              top: 12,
+              left: 16, // Match list item margin
+              right: 16, // Match list item margin
+              height: SEARCH_BAR_HEIGHT,
               opacity: searchBarOpacity,
-              overflow: 'hidden',
               justifyContent: 'center',
+              zIndex: 1, // Behind the list
             }}
           >
             <SearchFeature
@@ -1220,22 +1221,33 @@ export default function VoiceRecorder() {
             />
           </Animated.View>
 
-          {dropboxSyncing && (
-            <View style={styles.syncRow}>
-              <ActivityIndicator size="small" color="#006ff" />
-              <Text style={styles.syncText}>
-                Syncing Dropbox: {syncProgress.completed} / {syncProgress.total} files...
-              </Text>
-            </View>
-          )}
-          {syncError && !dropboxSyncing && (
-            <View style={styles.syncRow}>
-              <Text style={{ color: 'red' }}>{syncError}</Text>
-            </View>
-          )}
+          {/* Content area that reveals search bar by adjusting margin */}
+          <Animated.View style={{ 
+            flex: 1,
+            marginTop: contentMarginTop, // Animated margin to reveal/hide search
+            zIndex: 2, // Above the search bar
+          }}>
+            {/* Content container with clean background */}
+            <View style={{
+              flex: 1,
+              backgroundColor: '#fff', // Clean white background like the list items
+            }}>
+              {dropboxSyncing && (
+                <View style={styles.syncRow}>
+                  <ActivityIndicator size="small" color="#006ff" />
+                  <Text style={styles.syncText}>
+                    Syncing Dropbox: {syncProgress.completed} / {syncProgress.total} files...
+                  </Text>
+                </View>
+              )}
+              {syncError && !dropboxSyncing && (
+                <View style={styles.syncRow}>
+                  <Text style={{ color: 'red' }}>{syncError}</Text>
+                </View>
+              )}
 
-          {/* Minimal delete handler for RecordingList */}
-          <RecordingList
+              {/* Minimal delete handler for RecordingList */}
+              <RecordingList
             key={`recordings-${recordings.length}`}
             // Always use context values for recordings and tags
             recordings={recordingsToShow}
@@ -1270,6 +1282,8 @@ export default function VoiceRecorder() {
             onCancelTemporary={cancelEditTemporaryRecording}
             onSaveTemporary={saveTemporaryRecording}
           />
+            </View>
+          </Animated.View>
       </View>
     </DrawerLayout>
 

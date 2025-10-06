@@ -68,24 +68,27 @@ const RecordingList = ({
   // iOS Messages-style continuous pull gesture handling
   const scrollY = useRef(0);
   const lastScrollY = useRef(0);
+  const lastRevealTrigger = useRef(0);
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const currentScrollY = e.nativeEvent.contentOffset.y;
     scrollY.current = currentScrollY;
     lastScrollY.current = currentScrollY;
 
-    // Handle continuous pull gesture for iOS Messages-style behavior
+    // Handle pull gesture for iOS Messages-style behavior
     if (currentScrollY < 0) {
-      // Pulling down - reveal search proportionally
-      const maxPull = 60; // Maximum pull distance
-      const progress = Math.min(Math.abs(currentScrollY) / maxPull, 1);
+      // Pulling down - trigger reveal when pulled enough
+      const maxPull = 40; // Slightly smaller for easier triggering
+      const progress = Math.abs(currentScrollY) / maxPull;
       
-      // Trigger reveal when pulled enough (like iOS Messages)
-      if (progress > 0.3 && onRevealSearchBar) {
+      // Debounce reveal triggers to prevent multiple rapid calls
+      const now = Date.now();
+      if (progress > 0.3 && onRevealSearchBar && (now - lastRevealTrigger.current) > 150) {
+        lastRevealTrigger.current = now;
         onRevealSearchBar();
       }
-    } else if (currentScrollY > 5 && onHideSearchBar) {
-      // Scrolled up - hide search immediately (super sensitive like Messages)
+    } else if (currentScrollY > 8 && onHideSearchBar) {
+      // Scrolled up - hide search with slight delay for smoother feel
       onHideSearchBar();
     }
   };
@@ -93,9 +96,14 @@ const RecordingList = ({
   const handleScrollEndDrag = () => {
     const currentScrollY = scrollY.current;
     
-    // Reveal search bar when pulling down (any amount)
-    if (currentScrollY < 0 && onRevealSearchBar) {
-      onRevealSearchBar();
+    // Reveal search bar when pulling down with gentle threshold
+    if (currentScrollY < 0) {
+      const maxPull = 40;
+      const progress = Math.abs(currentScrollY) / maxPull;
+      
+      if (progress > 0.25 && onRevealSearchBar) {
+        onRevealSearchBar();
+      }
     } 
     // Hide search bar when scrolling up (super sensitive like Messages)
     else if (currentScrollY > 5 && onHideSearchBar) {
