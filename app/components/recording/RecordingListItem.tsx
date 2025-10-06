@@ -280,10 +280,11 @@ const RecordingListItem = React.memo(
     return (
       <Swipeable
         ref={swipeableRef}
-        renderRightActions={renderRightActions}
+        renderRightActions={expanded ? undefined : renderRightActions}
         rightThreshold={60} // Slightly higher threshold
         friction={1.5} // Slightly less friction for smoother feel
         overshootRight={false} // Prevent overshooting past the action
+        enabled={!expanded} // Disable swipe when playback drawer is expanded
         onSwipeableWillOpen={(direction) => {
           console.log('[RecordingListItem] Swipe will open, direction:', direction);
           // Set swipe active when any swipe starts
