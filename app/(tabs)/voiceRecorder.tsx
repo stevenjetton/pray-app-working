@@ -97,6 +97,8 @@ export default function VoiceRecorder() {
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
   const contentMarginTop = useRef(new Animated.Value(12 + SEARCH_BAR_HEIGHT)).current; // Start below search bar
 
+  const drawerRef = useRef<DrawerLayout>(null);
+
   useEffect(() => {
     // Slide animation - content margin changes to reveal/hide search bar
     Animated.parallel([
@@ -126,7 +128,7 @@ export default function VoiceRecorder() {
 
   const router = useRouter();
   const navigation = useNavigation();
-  const drawerRef = useRef<DrawerLayout>(null);
+
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const focusEffectProcessing = useRef(false);
   const lastFocusTime = useRef(0);
@@ -1174,8 +1176,8 @@ export default function VoiceRecorder() {
         ref={drawerRef}
         drawerWidth={340}
         drawerPosition="right"
-        drawerType="slide"
-        overlayColor="rgba(0,0,0,0.2)"
+        drawerType="front"
+        overlayColor="rgba(0,0,0,0.3)"
         onDrawerOpen={() => {
           setIsFilterDrawerOpen(true);
           console.log('[VoiceRecorder] Drawer opened');
@@ -1284,8 +1286,8 @@ export default function VoiceRecorder() {
           />
             </View>
           </Animated.View>
-      </View>
-    </DrawerLayout>
+        </View>
+      </DrawerLayout>
 
       {/* FAB menu modal */}
       <Modal visible={fabMenuOpen} transparent animationType="fade" onRequestClose={() => setFabMenuOpen(false)}>
