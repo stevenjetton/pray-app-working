@@ -379,7 +379,7 @@ const onToggleTag = useCallback(
       </View>
 
       <Text style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>
-        Tap tags to filter recordings. When multiple tags are selected, recordings are grouped by tag order.
+        Tap tags to filter recordings. When multiple tags are selected, recordings are grouped by tag tap order.
       </Text>
 
       {/* ✅ Clear Tags button */}

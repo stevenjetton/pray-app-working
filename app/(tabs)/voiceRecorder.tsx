@@ -46,7 +46,7 @@ import TagIcon from '@/components/ui/TagIcon';
 
 
 import SearchFeature from '@/components/ui/SearchFeature';
-import { Animated, Easing } from 'react-native';
+import { Animated } from 'react-native';
 
 
 WebBrowser.maybeCompleteAuthSession();
@@ -100,22 +100,22 @@ export default function VoiceRecorder() {
   const drawerRef = useRef<DrawerLayout>(null);
 
   useEffect(() => {
-    // Slide animation - content margin changes to reveal/hide search bar
+    // Use spring animation for natural iOS-like feel
     Animated.parallel([
-      Animated.timing(contentMarginTop, {
-        toValue: searchBarVisible ? 12 + SEARCH_BAR_HEIGHT : 12, // More margin when search visible, less when hidden
-        useNativeDriver: false, // Can't use native driver for margin
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
+      Animated.spring(contentMarginTop, {
+        toValue: searchBarVisible ? 12 + SEARCH_BAR_HEIGHT : 12,
+        useNativeDriver: false,
+        tension: 100,
+        friction: 8,
       }),
-      Animated.timing(searchBarOpacity, {
+      Animated.spring(searchBarOpacity, {
         toValue: searchBarVisible ? 1 : 0,
         useNativeDriver: true,
-        duration: 250,
-        easing: Easing.out(Easing.quad),
+        tension: 100,
+        friction: 8,
       }),
     ]).start();
-  }, [searchBarVisible, contentMarginTop, searchBarOpacity]);
+  }, [searchBarVisible]);
 
   // iOS Messages-style search bar handlers
   const handleRevealSearchBar = useCallback(() => {
