@@ -258,19 +258,52 @@ const RecordingListItem = React.memo(
 
     // Handle swipe progress for haptic feedback
 
-    // Render the delete action that appears on swipe
+    // Render the action buttons that appear on swipe: delete | edit | eyeball
     const renderRightActions = () => {
       return (
-        <TouchableOpacity
-          style={styles.deleteAction}
-          onPress={handleDeletePress}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel={`Delete recording ${item.title || 'Untitled'}`}
-        >
-          <Ionicons name="trash" size={20} color="#ffffff" />
-          <Text style={styles.deleteActionText}>Delete</Text>
-        </TouchableOpacity>
+        <View style={styles.swipeActions}>
+          {/* Delete button - first action (leftmost) */}
+          <TouchableOpacity
+            style={styles.deleteAction}
+            onPress={handleDeletePress}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete recording ${item.title || 'Untitled'}`}
+          >
+            <Ionicons name="trash" size={20} color="#ffffff" />
+            <Text style={styles.deleteActionText}>Delete</Text>
+          </TouchableOpacity>
+          
+          {/* Edit button - second action (middle) */}
+          <TouchableOpacity
+            style={styles.editAction}
+            onPress={() => {
+              swipeableRef.current?.close();
+              startEdit(item);
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit recording ${item.title || 'Untitled'}`}
+          >
+            <Ionicons name="pencil" size={20} color="#ffffff" />
+            <Text style={styles.editActionText}>Edit</Text>
+          </TouchableOpacity>
+          
+          {/* View/Eyeball button - third action (rightmost) */}
+          <TouchableOpacity
+            style={styles.viewAction}
+            onPress={() => {
+              swipeableRef.current?.close();
+              onView(item);
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`View details for ${item.title || 'Untitled'}`}
+          >
+            <Ionicons name="eye" size={20} color="#ffffff" />
+            <Text style={styles.viewActionText}>View</Text>
+          </TouchableOpacity>
+        </View>
       );
     };
 
@@ -853,6 +886,38 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  swipeActions: {
+    flexDirection: 'row',
+    height: '100%',
+  },
+  viewAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
+    backgroundColor: '#1976d2',
+    paddingHorizontal: 10,
+  },
+  viewActionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  editAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
+    backgroundColor: '#ff9800',
+    paddingHorizontal: 10,
+  },
+  editActionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
   deleteAction: {
     justifyContent: 'center',
