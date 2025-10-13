@@ -11,15 +11,21 @@ type PlaybackContextType = {
   position: number;
   duration: number;
   playRecording: (recording: Encounter) => Promise<void>;
+  playPlaylist: (recordings: Encounter[], playlistId?: string) => Promise<void>;
   pausePlayback: () => Promise<void>;
   skipBy: (seconds: number) => Promise<void>;
   setSelectedRecording: (recording: Encounter | null) => void;
   stopPlayback: () => Promise<void>;
+  playlistQueue: Encounter[];
+  playlistIndex: number;
+  isPlaylistPlaying: boolean;
+  activePlaylistId: string | null;
 };
 
 const PlaybackContext = createContext<PlaybackContextType | undefined>(undefined);
 
 export function PlaybackProvider({ children }: { children: React.ReactNode }) {
+  console.log('[PlaybackContext] PlaybackProvider mounted');
   const { recordings, updateRecording } = useRecordings();
   const [selectedRecording, setSelectedRecording] = useState<Encounter | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -28,6 +34,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const soundRef = useRef<Audio.Sound | null>(null);
   const isPlayInProgressRef = useRef(false);
+  // Playlist queue state
+  const [playlistQueue, setPlaylistQueue] = useState<Encounter[]>([]);
+  const [playlistIndex, setPlaylistIndex] = useState(0);
+  const [isPlaylistPlaying, setIsPlaylistPlaying] = useState(false);
+  // Play all recordings in a playlist, starting from the first
+  const playRecordingRef = useRef<((r: Encounter) => Promise<void>) | null>(null);
+  // Track which playlist initiated playback
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
 
   // Wrap \`setSelectedRecording\` with logging
   const setSelectedRecordingWithLog = (recording: Encounter | null) => {
@@ -89,18 +103,20 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     selectedRecordingRef.current = selectedRecording;
   }, [selectedRecording]);
 
+  // Modified playRecording to support playlist auto-advance
   const playRecording = useCallback(
     async (recording: Encounter) => {
-  // [PlaybackContext] playRecording called: recording.id
-
+      // Avoid logging full transcript in debug
+      const { id, title, uri, views } = recording;
+      console.log('[PlaybackContext] playRecording:', { id, title, uri, views });
       if (isPlayInProgressRef.current) {
         // [PlaybackContext] playRecording ignored: already in progress
         return;
       }
       isPlayInProgressRef.current = true;
 
-  let playbackFinished = false;
-  try {
+      let playbackFinished = false;
+      try {
         if (!recording.uri) {
           console.warn('[PlaybackContext] playRecording: No URI found for recording:', recording.id);
           isPlayInProgressRef.current = false;
@@ -126,11 +142,11 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-  // [PlaybackContext] Stopping playback to load new recording: recording.id
+        // [PlaybackContext] Stopping playback to load new recording: recording.id
         await stopPlayback();
 
         await new Promise((resolve) => setTimeout(resolve, 100)); // 100 ms delay
-  // [PlaybackContext] Setting selected recording: recording.id
+        // [PlaybackContext] Setting selected recording: recording.id
         setSelectedRecordingWithLog(recording);
 
         try {
@@ -173,11 +189,11 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           console.warn('[PlaybackContext] Error setting audio mode for playback:', audioModeError);
         }
 
-  // [PlaybackContext] Starting playback for recording: recording.id
+        // [PlaybackContext] Starting playback for recording: recording.id
         try {
           const { sound } = await Audio.Sound.createAsync(
-            { uri: recording.uri }, 
-            { 
+            { uri: recording.uri },
+            {
               shouldPlay: true,
               volume: 1.0,
               rate: 1.0,
@@ -190,6 +206,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           await soundRef.current.setVolumeAsync(1.0);
 
           sound.setOnPlaybackStatusUpdate(async (status: AVPlaybackStatus) => {
+            // DEBUG: Always log status updates (no transcript)
+            console.log('[PlaybackContext] onPlaybackStatusUpdate', {
+              status,
+              isPlaylistPlaying,
+              playlistQueue: playlistQueue.map(r => ({ id: r.id, title: r.title })),
+              playlistIndex,
+              selectedRecording: selectedRecording ? { id: selectedRecording.id, title: selectedRecording.title } : null,
+            });
             if (!status.isLoaded) {
               setIsPlaying(false);
               return;
@@ -198,9 +222,6 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
             setDuration(status.durationMillis ? status.durationMillis / 1000 : 0);
             setIsPlaying((prev) => (prev !== status.isPlaying ? status.isPlaying : prev));
 
-            // Track playback duration (optional, can be removed if not needed)
-            if (status.durationMillis) {
-            }
             // If playback finished, always increment views
             if (status.didJustFinish && !playbackFinished) {
               playbackFinished = true;
@@ -210,6 +231,28 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
               setPosition(0);
               sound.unloadAsync().catch(() => {});
               soundRef.current = null;
+              // Auto-advance if in playlist mode
+              console.log('[PlaybackContext] didJustFinish', {
+                isPlaylistPlaying,
+                playlistQueue,
+                playlistIndex,
+              });
+              if (isPlaylistPlaying && playlistQueue.length > 0) {
+                const nextIndex = playlistIndex + 1;
+                if (nextIndex < playlistQueue.length) {
+                  // There are more recordings: advance to next
+                  console.log('[PlaybackContext] setPlaylistIndex', { nextIndex, playlistQueue });
+                  setPlaylistIndex(nextIndex);
+                  // Playback of next recording will be triggered by useEffect below
+                } else {
+                  // End of playlist: robustly reset all playlist state
+                  setPlaylistIndex(0);
+                  setSelectedRecordingWithLog(null);
+                  setIsPlaylistPlaying(false);
+                  setPlaylistQueue([]);
+                  setActivePlaylistId(null);
+                }
+              }
             }
           });
         } catch (err) {
@@ -222,6 +265,11 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     },
     [stopPlayback, waitForFileStability, setSelectedRecordingWithLog]
   );
+
+  // Keep playRecording ref up to date (fix: move outside callback)
+  React.useEffect(() => {
+    playRecordingRef.current = playRecording;
+  }, [playRecording]);
 
   const pausePlayback = useCallback(async () => {
     if (soundRef.current) {
@@ -254,6 +302,52 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Define playPlaylist after playRecording is defined
+  const playPlaylist = useCallback(
+    async (queue: Encounter[], playlistId?: string) => {
+      console.log('[PlaybackContext] playPlaylist called', { queue, playlistId });
+      if (!queue || queue.length === 0) return;
+      // Robustly reset all playlist state before starting
+      setPlaylistQueue([]);
+      setPlaylistIndex(0);
+      setIsPlaylistPlaying(false);
+      setActivePlaylistId(null);
+      // Now set up new playlist
+      setTimeout(() => {
+        setPlaylistQueue(queue);
+        setPlaylistIndex(0);
+        setIsPlaylistPlaying(true);
+        if (playlistId) setActivePlaylistId(playlistId);
+        else setActivePlaylistId(null);
+        if (playRecordingRef.current) {
+          playRecordingRef.current(queue[0]);
+        }
+      }, 0);
+    },
+    []
+  );
+
+  // Auto-advance playlist: when playlistIndex changes, play the next recording
+  useEffect(() => {
+    console.log('[PlaybackContext] useEffect playlistIndex:', {
+      isPlaylistPlaying,
+      playlistQueueLength: playlistQueue.length,
+      playlistIndex,
+      playlistQueue: playlistQueue.map(r => ({ id: r.id, title: r.title })),
+      selectedRecording: selectedRecording ? { id: selectedRecording.id, title: selectedRecording.title } : null,
+      activePlaylistId,
+    });
+    if (isPlaylistPlaying && playlistQueue.length > 0 && playlistIndex < playlistQueue.length) {
+      if (playlistIndex !== 0) { // skip initial trigger
+        console.log('[PlaybackContext] Auto-advance: playing next recording', playlistQueue[playlistIndex]);
+        // Ensure activePlaylistId is preserved for auto-advance
+        setActivePlaylistId((prev) => prev); // no-op, but ensures closure
+        playRecording(playlistQueue[playlistIndex]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlistIndex]);
+
   useEffect(() => {
     async function configureAudioMode() {
       try {
@@ -275,7 +369,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return () => {
-      console.log('[PlaybackContext] Component unmount cleanup: stopping playback');
+      console.log('[PlaybackContext] PlaybackProvider unmounted: stopping playback and resetting state');
       stopPlayback();
     };
   }, [stopPlayback]);
@@ -289,10 +383,15 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
         position,
         duration,
         playRecording,
+        playPlaylist,
         pausePlayback,
         skipBy,
         setSelectedRecording: setSelectedRecordingWithLog,
         stopPlayback,
+        playlistQueue,
+        playlistIndex,
+        isPlaylistPlaying,
+        activePlaylistId,
       }}
     >
       {children}

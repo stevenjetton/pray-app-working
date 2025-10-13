@@ -5,11 +5,13 @@ import { Encounter } from '@/types/Encounter';
 
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export interface PlaybackBarProps {
-  recording: Encounter;
+  recording: Encounter | null;
+  playlistRecordings?: Encounter[];
+  isThisPlaylistPlaying?: boolean;
   onView?: () => void;
   onMenu?: () => void;
   onDelete?: () => void;
@@ -19,6 +21,8 @@ export interface PlaybackBarProps {
 
 export const PlaybackBar: React.FC<PlaybackBarProps> = ({
   recording,
+  playlistRecordings,
+  isThisPlaylistPlaying,
   onView,
   onMenu,
   onDelete,
@@ -33,32 +37,46 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
     skipBy,
     duration: ctxDuration,
     position,
+    // @ts-ignore
+    setActivePlaylistId,
   } = usePlayback();
 
+  // Debug: log props and context on every render
+  React.useEffect(() => {
+    console.log('[PlaybackBar] Render', {
+      recording,
+      playlistRecordings,
+      selectedRecording,
+      isPlaying,
+      isThisPlaylistPlaying,
+    });
+  });
+
   const [fileDuration, setFileDuration] = useState<number | null>(
-    typeof recording.duration === 'number' && recording.duration > 0
+    recording && typeof recording.duration === 'number' && recording.duration > 0
       ? recording.duration
       : null
   );
   const [durationLoading, setDurationLoading] = useState(false);
   const [durationError, setDurationError] = useState<string | null>(null);
 
-  const [isBusy, setIsBusy] = useState(false);
-  const tapCount = useRef(0);
+  const [isBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function getDuration() {
       setDurationError(null);
       if (
+        !recording ||
         !recording.uri ||
         (typeof ctxDuration === 'number' && ctxDuration > 0) ||
         (typeof fileDuration === 'number' && fileDuration > 0)
       ) {
-  // [PlaybackBar] Skipping duration fetch: Already set or no URI
+        // [PlaybackBar] Skipping duration fetch: Already set or no URI
         return;
       }
       try {
+        if (!recording) return;
         const info = await FileSystem.getInfoAsync(recording.uri);
   // [PlaybackBar] File info: info
         if (!info.exists) {
@@ -103,66 +121,29 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
       cancelled = true;
     };
     // eslint-disable-next-line
-  }, [recording.uri, ctxDuration]);
+  }, [recording && recording.uri, ctxDuration]);
 
-  if (!selectedRecording || selectedRecording.id !== recording.id) {
-  // [PlaybackBar] Not the selected recording - UI hidden
+  if (!recording) {
+    // No recording available, show nothing
     return null;
   }
 
-  const durationToDisplay =
-    typeof ctxDuration === 'number' && ctxDuration > 0
-      ? ctxDuration
-      : typeof fileDuration === 'number' && fileDuration > 0
-      ? fileDuration
-      : null;
+  // If isThisPlaylistPlaying is undefined, treat as always active (for encounter/playback screens)
+  const active = isThisPlaylistPlaying === undefined ? true : isThisPlaylistPlaying;
+  const durationToDisplay = active
+    ? (typeof ctxDuration === 'number' && ctxDuration > 0
+        ? ctxDuration
+        : typeof fileDuration === 'number' && fileDuration > 0
+        ? fileDuration
+        : null)
+    : (typeof fileDuration === 'number' && fileDuration > 0 ? fileDuration : null);
 
-  const positionToDisplay =
-    typeof position === 'number' && durationToDisplay ? position : 0;
+  const positionToDisplay = active
+    ? (typeof position === 'number' && durationToDisplay ? position : 0)
+    : 0;
 
   // ...removed manual slider state and pan responder...
 
-  const handlePlayPause = async () => {
-    tapCount.current++;
-  // [PlaybackBar] PlayPause Button Pressed
-
-    if (isBusy) {
-  // [PlaybackBar] Ignoring play/pause: busy
-      return;
-    }
-
-    if (!recording.uri) {
-  // [PlaybackBar] Ignoring play/pause: Missing recording URI
-      return;
-    }
-
-    setIsBusy(true);
-    try {
-      if (onTogglePlayPause) {
-        // [PlaybackBar] Using external onTogglePlayPause
-        await Promise.resolve(onTogglePlayPause());
-      } else {
-        if (selectedRecording?.id === recording.id) {
-          if (isPlaying) {
-            // [PlaybackBar] pausePlayback called
-            await pausePlayback();
-          } else {
-            // [PlaybackBar] playRecording called (resume)
-            await playRecording(recording);
-          }
-        } else {
-          // [PlaybackBar] playRecording called (new recording)
-          await playRecording(recording);
-        }
-      }
-    } catch (err) {
-      // [PlaybackBar] Error in play/pause
-      // Optional: handle error silently or surface to user as needed
-    } finally {
-      setIsBusy(false);
-      // [PlaybackBar] PlayPause Button Handler Complete
-    }
-  };
 
   const handleSkip = async (seconds: number) => {
   // [PlaybackBar] Skip button pressed, seconds: seconds
@@ -174,8 +155,11 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
   };
 
   return (
-    <View style={styles.wrapper}>
+  <View style={styles.wrapper}> 
       {/* Only the interactive PlaybackProgressRow will be shown below */}
+      {isThisPlaylistPlaying && (
+        <Text style={{ color: '#1976d2', fontWeight: 'bold', marginBottom: 2 }}>Now Playing</Text>
+      )}
       <PlaybackProgressRow
         position={positionToDisplay}
         duration={durationToDisplay ?? undefined}
@@ -215,13 +199,23 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={handlePlayPause}
+          onPress={onTogglePlayPause || (async () => {
+            if (isBusy) return;
+            if (!recording || !recording.uri) return;
+            // Only clear activePlaylistId if not in a playlist context
+            if (setActivePlaylistId && isThisPlaylistPlaying === undefined) setActivePlaylistId(null);
+            if (isPlaying) {
+              await pausePlayback();
+            } else {
+              await playRecording(recording);
+            }
+          })}
           disabled={isBusy}
-          accessibilityLabel={isPlaying ? 'Pause playback' : 'Play recording'}
+          accessibilityLabel={active && isPlaying ? 'Pause playback' : 'Play recording'}
           accessibilityRole="button"
         >
           <TagIcon
-            icon={isPlaying ? 'pause-circle' : 'play-circle'}
+            icon={active && isPlaying ? 'pause-circle' : 'play-circle'}
             size={48}
             color={isBusy ? '#888' : '#000'}
           />
