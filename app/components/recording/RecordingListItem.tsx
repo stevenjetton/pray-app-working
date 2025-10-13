@@ -11,6 +11,7 @@ import Collapsible from 'react-native-collapsible';
 import { Swipeable } from 'react-native-gesture-handler';
 import Popover from 'react-native-popover-view';
 
+import PlaylistSelector from '@/components/playlist/PlaylistSelector';
 import EditRecordingForm from '@/components/recording/EditRecordingForm';
 import { ScriptureTaggedText } from '@/components/ui/ScriptureTaggedText';
 import TagIcon from '@/components/ui/TagIcon';
@@ -131,14 +132,20 @@ const RecordingListItem = React.memo(
     editId,
     onCancelEdit,
   }: Props) => {
-  // [RecordingListItem] Render start - id: item.id, isEditing: isEditing, expanded: expanded, editTitle: editTitle, editPlace: editPlace
+  console.log('[RecordingListItem] Render', { id: item.id, expanded });
 
     // Swipeable ref for controlling swipe actions
     const swipeableRef = useRef<Swipeable>(null);
-    
     // Track swipe state to prevent accidental touches
     const [isSwipeActive, setIsSwipeActive] = useState(false);
     const swipeActiveRef = useRef(false);
+    // Debounce flag to block presses right after swipe
+    const swipeDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    // Flag to block the very first tap after a swipe
+    const swipeJustClosedRef = useRef(false);
+
+    // Playlist selector state
+    const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
 
     const [, setLocalEditCreatedDate] = useState<string>(
       item.createdDate ?? new Date().toISOString(),
@@ -204,10 +211,25 @@ const RecordingListItem = React.memo(
     }
 
     const onRecordingPress = async () => {
+      // Bulletproof: Never open drawer if swipe is active, debounce, or just closed
+      if (swipeActiveRef.current || isSwipeActive || swipeDebounceRef.current || swipeJustClosedRef.current) {
+        console.log('[RecordingListItem] onRecordingPress blocked - swipe is active, debounce, or just closed');
+        return;
+      }
+      console.log('[RecordingListItem] onRecordingPress called', {
+        expanded,
+        editId,
+        itemId: item.id,
+        swipeActiveRef: swipeActiveRef.current,
+        isSwipeActive,
+        swipeDebounceRef: !!swipeDebounceRef.current,
+        swipeJustClosedRef: swipeJustClosedRef.current
+      });
       if (editId && editId !== item.id) {
         // [VoiceRecorder] Edit is active on different recording, cancelling edit to switch
         onCancelEdit();
         await safeStopPlayback();
+        console.log('[RecordingListItem] setExpandedId (edit switch)', item.id);
         setExpandedId(item.id);
         setPopoverId(null);
         return;
@@ -215,10 +237,12 @@ const RecordingListItem = React.memo(
 
       if (expanded) {
         await safeStopPlayback();
+        console.log('[RecordingListItem] setExpandedId (collapse)', null);
         setExpandedId(null);
         setEditId(null);
       } else {
         await safeStopPlayback();
+        console.log('[RecordingListItem] setExpandedId (expand)', item.id);
         setExpandedId(item.id);
       }
       setPopoverId(null);
@@ -258,7 +282,7 @@ const RecordingListItem = React.memo(
 
     // Handle swipe progress for haptic feedback
 
-    // Render the action buttons that appear on swipe: delete | edit | eyeball
+    // Render the action buttons that appear on swipe: delete | edit | playlist | eyeball
     const renderRightActions = () => {
       return (
         <View style={styles.swipeActions}>
@@ -274,7 +298,7 @@ const RecordingListItem = React.memo(
             <Text style={styles.deleteActionText}>Delete</Text>
           </TouchableOpacity>
           
-          {/* Edit button - second action (middle) */}
+          {/* Edit button - second action */}
           <TouchableOpacity
             style={styles.editAction}
             onPress={() => {
@@ -289,7 +313,22 @@ const RecordingListItem = React.memo(
             <Text style={styles.editActionText}>Edit</Text>
           </TouchableOpacity>
           
-          {/* View/Eyeball button - third action (rightmost) */}
+          {/* Playlist button - third action */}
+          <TouchableOpacity
+            style={styles.playlistAction}
+            onPress={() => {
+              swipeableRef.current?.close();
+              setShowPlaylistSelector(true);
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Add ${item.title || 'Untitled'} to playlist`}
+          >
+            <Ionicons name="musical-notes" size={20} color="#ffffff" />
+            <Text style={styles.playlistActionText}>Playlist</Text>
+          </TouchableOpacity>
+          
+          {/* View/Eyeball button - fourth action (rightmost) */}
           <TouchableOpacity
             style={styles.viewAction}
             onPress={() => {
@@ -311,7 +350,8 @@ const RecordingListItem = React.memo(
 
 
     return (
-      <Swipeable
+      <>
+        <Swipeable
         ref={swipeableRef}
         renderRightActions={expanded ? undefined : renderRightActions}
         rightThreshold={60} // Slightly higher threshold
@@ -323,6 +363,11 @@ const RecordingListItem = React.memo(
           // Set swipe active when any swipe starts
           setIsSwipeActive(true);
           swipeActiveRef.current = true;
+          // Close the playback drawer if open
+          if (expanded) {
+            console.log('[RecordingListItem] Closing drawer due to swipe');
+            setExpandedId(null);
+          }
         }}
         onSwipeableRightWillOpen={() => {
           console.log('[RecordingListItem] Right swipe will open - setting swipe active');
@@ -336,13 +381,31 @@ const RecordingListItem = React.memo(
           swipeActiveRef.current = true;
         }}
         onSwipeableClose={() => {
-          console.log('[RecordingListItem] Swipe closed - clearing swipe active after delay');
-          // Clear swipe state after a longer delay to prevent immediate touch
-          setTimeout(() => {
-            setIsSwipeActive(false);
-            swipeActiveRef.current = false;
-            console.log('[RecordingListItem] Swipe state cleared');
-          }, 300); // Increased delay to 300ms
+          console.log('[RecordingListItem] Swipe closed - clearing swipe active after delay (1000ms)', {
+            before: {
+              swipeActiveRef: swipeActiveRef.current,
+              isSwipeActive,
+              swipeDebounceRef: !!swipeDebounceRef.current,
+              swipeJustClosedRef: swipeJustClosedRef.current
+            }
+          });
+          // Debounce: block presses for 1000ms after swipe closes
+          setIsSwipeActive(false);
+          swipeActiveRef.current = false;
+          swipeJustClosedRef.current = true;
+          if (swipeDebounceRef.current) clearTimeout(swipeDebounceRef.current);
+          swipeDebounceRef.current = setTimeout(() => {
+            swipeDebounceRef.current = null;
+            // No-op, just let debounce expire
+          }, 1000);
+          console.log('[RecordingListItem] Swipe closed - flags after set', {
+            after: {
+              swipeActiveRef: swipeActiveRef.current,
+              isSwipeActive: false,
+              swipeDebounceRef: !!swipeDebounceRef.current,
+              swipeJustClosedRef: swipeJustClosedRef.current
+            }
+          });
         }}
         onSwipeableOpen={() => {
           console.log('[RecordingListItem] Swipe opened - keeping swipe active');
@@ -355,11 +418,22 @@ const RecordingListItem = React.memo(
         ]}>
           <TouchableOpacity
             onPress={() => {
-              // Double-check swipe state before executing press
-              if (swipeActiveRef.current || isSwipeActive) {
-                console.log('[RecordingListItem] onPress blocked - swipe is active');
+              console.log('[RecordingListItem] onPress attempt', {
+                swipeActiveRef: swipeActiveRef.current,
+                isSwipeActive,
+                swipeDebounceRef: !!swipeDebounceRef.current,
+                swipeJustClosedRef: swipeJustClosedRef.current
+              });
+              // Block press if swipe is active or debounce is running
+              if (swipeActiveRef.current || isSwipeActive || swipeDebounceRef.current || swipeJustClosedRef.current) {
+                console.log('[RecordingListItem] onPress blocked - swipe is active, debounce, or just closed');
+                if (swipeJustClosedRef.current) {
+                  // Only reset after a blocked tap
+                  swipeJustClosedRef.current = false;
+                }
                 return;
               }
+              console.log('[RecordingListItem] onRecordingPress: opening drawer by tap');
               onRecordingPress();
             }}
             onPressIn={() => {
@@ -616,6 +690,15 @@ const RecordingListItem = React.memo(
         </Collapsible>
       </View>
       </Swipeable>
+
+      {/* Playlist selector modal */}
+      <PlaylistSelector
+        visible={showPlaylistSelector}
+        onClose={() => setShowPlaylistSelector(false)}
+        recordingIds={[item.id]}
+        recordingTitle={item.title || 'Untitled'}
+      />
+      </>
     );
   },
   (prevProps, nextProps) => {
@@ -914,6 +997,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   editActionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  playlistAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
+    backgroundColor: '#9c27b0',
+    paddingHorizontal: 10,
+  },
+  playlistActionText: {
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',

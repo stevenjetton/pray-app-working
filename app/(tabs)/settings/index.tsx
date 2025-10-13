@@ -6,11 +6,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import TagIcon from '@/components/ui/TagIcon';
 
+
 const options = [
+  { label: 'Profile', icon: 'person-circle-outline', route: '/settings/profile' },
   { label: 'Manage Encounter Types', icon: 'pricetag-outline', route: '/settings/tags' },
   { label: 'Cloud Sync', icon: 'cloud-upload-outline', route: '/settings/cloud-sync' },
   { label: 'Local Data', icon: 'folder-open-outline', route: '/settings/local-data' },
-  { label: 'Reformat Old Transcripts', icon: 'create-outline', route: '/settings/reformat-transcripts' }, 
+  { label: 'Reformat Old Transcripts', icon: 'create-outline', route: '/settings/reformat-transcripts' },
 ] as const;
 
 export default function SettingsHome() {

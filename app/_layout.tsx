@@ -16,11 +16,13 @@ import { DropboxAuthProvider } from '@/context/DropboxAuthContext';
 import { SearchProvider } from '@/context/SearchContext';
 import { EncounterProvider } from '@context/EncounterContext';
 import { PlaybackProvider } from '@context/PlaybackContext';
+import { PlaylistProvider } from '@context/PlaylistContext';
 import { RecordingProvider } from '@context/RecordingContext';
 import { TagsProvider } from '@context/TagsContext';
 import { UserProvider } from '@context/UserContext';
 
 export default function RootLayout() {
+  console.log('[RootLayout] rendered');
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -40,7 +42,8 @@ export default function RootLayout() {
               <RecordingProvider>
                 <EncounterProvider>
                   <PlaybackProvider>
-                    <TagsProvider>
+                    <PlaylistProvider>
+                      <TagsProvider>
                       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
                         <Stack>
                           {/* Main navigation */}
@@ -50,8 +53,9 @@ export default function RootLayout() {
                         <StatusBar style="auto" />
                       </ThemeProvider>
                     </TagsProvider>
-                  </PlaybackProvider>
-                </EncounterProvider>
+                  </PlaylistProvider>
+                </PlaybackProvider>
+              </EncounterProvider>
               </RecordingProvider>
             </UserProvider>
           </DropboxAuthProvider>

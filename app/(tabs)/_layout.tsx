@@ -46,15 +46,11 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="profile"
+        name="playlists"
         options={{
-          title: 'Profile',
+          title: 'Playlists',
           tabBarIcon: ({ color, size }: { color: string; size: number }) => (
-            <Ionicons
-              name="person-circle-outline"
-              color={color}
-              size={size}
-            />
+            <Ionicons name="musical-notes-outline" color={color} size={size} />
           ),
         }}
       />
