@@ -58,6 +58,9 @@ pids
 *.seed
 *.pid.lock
 
+# Backend uploads (local recordings, not tracked)
+backend/uploads/
+
 # Coverage directory used by tools like istanbul
 coverage/
 

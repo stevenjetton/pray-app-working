@@ -7,6 +7,7 @@ import { useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import {
   ActivityIndicator,
@@ -577,6 +578,11 @@ export default function VoiceRecorder() {
   }, [voiceListening, recording, stopListening]);
 
   const startRecording = useCallback(async () => {
+    // Best practice: Only allow recording if app is active/foregrounded
+    if (AppState.currentState !== 'active') {
+      Alert.alert('App not active', 'Please bring the app to the foreground before starting a recording.');
+      return;
+    }
     try {
       if (stopPlayback) {
         await stopPlayback();
@@ -678,6 +684,7 @@ export default function VoiceRecorder() {
     if (!recording) return;
 
     try {
+      console.log('[DEBUG] stopRecording called, about to add new recording');
       console.log('Stopping recording...');
       
       // Stop audio level monitoring
@@ -731,30 +738,24 @@ export default function VoiceRecorder() {
         console.log('[VoiceRecorder] Adding new temporary recording to context:', newRecording);
         
         // Add to recordings context as temporary
-        const addedRecording = await addRecording(newRecording);
+  const addedRecording = await addRecording(newRecording);
+  console.log('[DEBUG] addRecording result:', addedRecording);
         
         if (addedRecording) {
+          console.log('[DEBUG] recordings after addRecording:', recordings);
           console.log('[VoiceRecorder] Temporary recording added successfully, opening edit form for ID:', addedRecording.id);
           console.log('[VoiceRecorder] Current editId before setting:', editId);
-          
+
+          // Clear tag filter so the new recording is always visible and editable
+          setSortTags([]);
+
           // Open edit form for the new recording
           setEditId(addedRecording.id);
-          
+
           // Add verification that editId was set
           setTimeout(() => {
             console.log('[VoiceRecorder] Verification: editId after setting:', editId);
           }, 100);
-          
-          // Fallback: clear editId if it's still set after 10 seconds (in case something goes wrong)
-          setTimeout(() => {
-            setEditId(current => {
-              if (current === addedRecording.id) {
-                console.log('[VoiceRecorder] Timeout: clearing stuck editId for:', addedRecording.id);
-                return null;
-              }
-              return current;
-            });
-          }, 10000);
         } else {
           console.error('[VoiceRecorder] Failed to add recording to context');
         }

@@ -9,7 +9,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
 type Props = {
@@ -51,13 +51,22 @@ const EditRecordingForm = ({
   const [localPlace, setLocalPlace] = useState(place || '');
   const [localTags, setLocalTags] = useState(tags || []);
 
-  // Sync props to local state when they change
+
+  // Only sync props to local state when the form is first opened (editId changes)
+  const firstLoadRef = useRef(true);
   useEffect(() => {
-    console.log('[EditRecordingForm] Props changed, syncing to local state:', { title, place, tags });
-    setLocalTitle(title || '');
-    setLocalPlace(place || '');
-    setLocalTags(tags || []);
-  }, [title, place, tags]);
+    if (firstLoadRef.current) {
+      console.log('[EditRecordingForm] First load, syncing to local state:', { title, place, tags });
+      setLocalTitle(title || '');
+      setLocalPlace(place || '');
+      setLocalTags(tags || []);
+      firstLoadRef.current = false;
+    }
+    // If the form is unmounted/remounted, reset the ref
+    return () => {
+      firstLoadRef.current = true;
+    };
+  }, []);
 
   // Update parent state when local values change
   useEffect(() => {
@@ -206,13 +215,17 @@ const EditRecordingForm = ({
         data={defaultTags}
         keyExtractor={(tag) => tag.id}
         contentContainerStyle={{ paddingVertical: 8 }}
-        keyboardShouldPersistTaps="handled"
+  keyboardShouldPersistTaps="always"
         renderItem={({ item: tag }) => {
           const selected = localTags && localTags.includes(tag.id);
           return (
             <TouchableOpacity
               style={[styles.tagChip, selected && styles.tagChipSelected]}
-              onPress={() => toggleLocalTag(tag.id)}
+              activeOpacity={1}
+              onPress={() => {
+                // Do not dismiss keyboard, just toggle tag
+                toggleLocalTag(tag.id);
+              }}
               accessibilityRole="button"
               accessibilityState={{ selected: !!selected }}
             >

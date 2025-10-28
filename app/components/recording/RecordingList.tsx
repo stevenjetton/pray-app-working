@@ -1,8 +1,3 @@
-
-
-
-
-
 import { useRecordings } from '@/context/RecordingContext';
 import { useTags } from '@/context/TagsContext';
 import { Encounter } from '@/types/Encounter';
@@ -125,7 +120,10 @@ const RecordingList = ({
 
   // Memoized handlers for props
   const handleSetExpandedId = useCallback((value: React.SetStateAction<string | null>) => setExpandedId(value), []);
-  const handleSetEditId = useCallback((value: React.SetStateAction<string | null>) => setEditId(value), []);
+  const handleSetEditId = useCallback((value: React.SetStateAction<string | null>) => {
+    console.log('[DEBUG] setEditId called with:', value);
+    setEditId(value);
+  }, []);
   const handleSetPopoverId = useCallback((value: React.SetStateAction<string | null>) => setPopoverId(value), []);
   const handleSetEditTitle = useCallback((value: React.SetStateAction<string>) => {
     console.log('[RecordingList] handleSetEditTitle called with:', value);
@@ -168,13 +166,19 @@ const RecordingList = ({
         setEditTags(item.tags || []);
         setEditPlace(item.place || '');
         setEditCreatedDate(item.createdDate || new Date().toISOString());
+      } else {
+        // If the recording is not found, do NOT clear editId or close the form.
+        // Log for debugging.
+        console.warn('[RecordingList] editId set but item not found in recordings. Keeping form open. editId:', editId);
+        return;
       }
     } else {
-      // Clear edit fields when not editing
+      // Only clear edit fields if editId is explicitly set to null (save/cancel)
       setEditTitle('');
       setEditTags([]);
       setEditPlace('');
       setEditCreatedDate('');
+      console.log('[DEBUG] editId became null, edit form closed');
     }
   }, [editId, recordings]);
   // Return a valid Tag object (update as needed for your Tag type)

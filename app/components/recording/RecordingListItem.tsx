@@ -113,7 +113,6 @@ const RecordingListItem = React.memo(
     stopPlayback,
     onView,
     setExpandedId,
-    setEditId,
     setPopoverId,
     startEdit,
     handleDelete,
@@ -236,10 +235,10 @@ const RecordingListItem = React.memo(
       }
 
       if (expanded) {
-        await safeStopPlayback();
-        console.log('[RecordingListItem] setExpandedId (collapse)', null);
-        setExpandedId(null);
-        setEditId(null);
+    await safeStopPlayback();
+    console.log('[RecordingListItem] setExpandedId (collapse)', null);
+    setExpandedId(null);
+    // Do NOT call setEditId(null) here. Only close edit form on explicit save/cancel or if the edited recording is deleted.
       } else {
         await safeStopPlayback();
         console.log('[RecordingListItem] setExpandedId (expand)', item.id);
