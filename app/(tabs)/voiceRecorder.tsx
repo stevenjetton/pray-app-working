@@ -28,6 +28,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import RecordingList from '@/components/recording/RecordingList';
 import { SortByTagSection } from '@/components/SortByTagSection';
+import TagChipBar from '@/components/ui/TagChipBar';
 
 import { usePlayback } from '@/context/PlaybackContext';
 import { useRecordings } from '@/context/RecordingContext';
@@ -1152,7 +1153,7 @@ export default function VoiceRecorder() {
         >
           <View style={{ width: 24, height: 24, justifyContent: 'center', alignItems: 'center' }}>
             <MaterialIcons name="filter-list" size={24} color="black" />
-            {(sortTags.length > 0 || sortMode !== null) && (
+            {sortMode !== null && (
               <View
                 style={{
                   position: 'absolute',
@@ -1235,6 +1236,39 @@ export default function VoiceRecorder() {
               flex: 1,
               backgroundColor: '#fff', // Clean white background like the list items
             }}>
+                {/* TagChipBar: horizontally scrollable tag chips for filtering */}
+                {/* Compute tag counts for all tags */}
+                {(() => {
+                  const tagCounts: Record<string, number> = {};
+                  recordings.forEach(rec => {
+                    if (Array.isArray(rec.tags)) {
+                      rec.tags.forEach(tagId => {
+                        tagCounts[tagId] = (tagCounts[tagId] || 0) + 1;
+                      });
+                    }
+                  });
+                  return (
+                
+                console.log('allTags:', allTags.map(t => ({ id: t.id, label: t.label }))),
+                
+                <TagChipBar
+                  tags={allTags}
+                  selectedTagIds={sortTags}
+                  tagCounts={tagCounts}
+                  onSelect={tagId => {
+                    setSortTags(prev => {
+                      if (prev.includes(tagId)) {
+                        // Untap: remove from array
+                        return prev.filter(id => id !== tagId);
+                      } else {
+                        // Add to end (preserve tap order)
+                        return [...prev, tagId];
+                      }
+                    });
+                  }}
+                />
+                  );
+                })()}
               {dropboxSyncing && (
                 <View style={styles.syncRow}>
                   <ActivityIndicator size="small" color="#006ff" />
