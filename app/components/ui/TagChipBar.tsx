@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   chipLabel: {
     color: '#444',
     fontWeight: '500',
-    fontSize: 15,
+    fontSize: 10,
   },
   chipLabelSelected: {
     color: '#fff',

@@ -1506,7 +1506,7 @@ const styles = StyleSheet.create({
   syncRow: { paddingHorizontal: 20, marginBottom: 8, flexDirection: 'row', alignItems: 'center' },
   syncText: { marginLeft: 8, color: '#0066ff' },
   title: {
-    fontSize: 20,
+    fontSize: 10,
     fontWeight: 'bold',
     paddingHorizontal: 0,
     paddingTop: 8,
