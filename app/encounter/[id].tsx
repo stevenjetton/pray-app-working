@@ -262,7 +262,7 @@ export default function EncounterDetailScreen() {
               {recording!.tags.map(tagId => {
                 const tagObj = tags.find(t => t.id === tagId);
                 return (
-                  <View key={tagId} style={[styles.tagChip, tagObj?.color ? { backgroundColor: tagObj.color } : {}]}>
+                  <View key={tagId} style={styles.tagChip}>
                     <Text style={styles.tagText}>
                       {tagObj ? tagObj.label : 'Deleted Tag'}
                     </Text>
@@ -397,17 +397,17 @@ const styles = StyleSheet.create({
   tagChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginRight: 6,
-    marginBottom: 2,
-    backgroundColor: '#1976d2',
+    backgroundColor: '#eee',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    marginRight: 8,
+    marginBottom: 4,
   },
   tagText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#fff',
+    color: '#444',
+    fontWeight: '500',
+    fontSize: 10,
   },
   place: { fontSize: 15, color: '#4d4d4d', marginBottom: 18 },
   audioPlayerContainer: {

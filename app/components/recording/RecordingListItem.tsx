@@ -17,7 +17,6 @@ import { ScriptureTaggedText } from '@/components/ui/ScriptureTaggedText';
 import TagIcon from '@/components/ui/TagIcon';
 import { getTagIcon } from '@/utils/tagIcons';
 
-const DASHBOARD_TAG_COLOR = '#1976d2';
 const icons = {
   delete: getTagIcon('delete'),
   edit: getTagIcon('edit'),
@@ -514,9 +513,9 @@ const RecordingListItem = React.memo(
                         const tagObj = allTags.find(t => t.id === tagId);
                         if (!tagObj) return null;
                         return (
-                          <View key={tagId} style={[styles.tagChip, { backgroundColor: tagObj.color || DASHBOARD_TAG_COLOR }]}> 
-                            <TagIcon icon={tagObj.icon} iconFamily={tagObj.iconFamily || 'Ionicons'} size={14} color="#fff" style={{ marginRight: 4 }} />
-                            <Text style={[styles.tagText, { color: '#fff' }]}>{tagObj.label}</Text>
+                          <View key={tagId} style={styles.tagChip}>
+                            <TagIcon icon={tagObj.icon} iconFamily={tagObj.iconFamily || 'Ionicons'} size={13} color="#222" style={{ marginRight: 4 }} />
+                            <Text style={styles.tagText}>{tagObj.label}</Text>
                           </View>
                         );
                       })}
@@ -852,7 +851,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   recordingTitle: {
-    fontSize: 18,
+    fontSize: 13,
     fontWeight: '600',
     flexShrink: 1,
     marginRight: 8,
@@ -872,21 +871,26 @@ const styles = StyleSheet.create({
   tagChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    borderRadius: 14,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     marginRight: 6,
-    marginBottom: 2,
+    marginBottom: 3,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#222',
   },
   tagText: {
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 9,
+    fontWeight: '500',
+    color: '#222',
+    letterSpacing: 0.1,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
-    marginTop: 4,
+    marginTop: 0,
     marginBottom: 0,
     minHeight: 20,
     justifyContent: 'space-between',
@@ -899,7 +903,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   date: {
-    fontSize: 14,
+    fontSize: 10,
     color: '#888',
     textAlign: 'left',
     minWidth: 0,
@@ -908,12 +912,12 @@ const styles = StyleSheet.create({
   },
   pipe: {
     color: '#bbb',
-    fontSize: 14,
-    marginHorizontal: 4,
+    fontSize: 10,
+    marginHorizontal: 2,
     flexShrink: 0,
   },
   place: {
-    fontSize: 14,
+    fontSize: 10,
     color: '#bbb',
     fontWeight: '500',
     textAlign: 'left',
@@ -930,7 +934,7 @@ const styles = StyleSheet.create({
     paddingRight: 8, // Added padding to align with tags
   },
   length: {
-    fontSize: 14,
+    fontSize: 10,
     color: '#555',
     textAlign: 'right',
   },
