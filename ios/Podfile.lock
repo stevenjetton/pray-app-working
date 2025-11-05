@@ -25,7 +25,7 @@ PODS:
     - ExpoModulesCore
   - ExpoHaptics (12.8.1):
     - ExpoModulesCore
-  - ExpoHead (3.5.24):
+  - ExpoHead (3.4.10):
     - ExpoModulesCore
   - ExpoImage (1.10.6):
     - ExpoModulesCore
@@ -1492,7 +1492,7 @@ SPEC CHECKSUMS:
   ExpoDocumentPicker: 7f6bc79d2bad6d06129b60914085854ae1478d74
   ExpoFileSystem: df58e1eb2a4d6f1006a1ca70bddfbbf63e52fa4f
   ExpoHaptics: c91902e436f3fb0e07aa19acc118018089fa90de
-  ExpoHead: 1a1b30c6c1d125e9b8a199ca305c16a1dc041624
+  ExpoHead: 304de9c15437e3c4c0691587a3bb59ae42ad399f
   ExpoImage: a70db90f39a7af98930cef91c84e877b1131f3dd
   ExpoImagePicker: d06822d74f1f0e7fe7cb070ece0fff6e678fa3eb
   ExpoKeepAwake: 3b8cf8533b9212500565a1e41fb080fc5af29918

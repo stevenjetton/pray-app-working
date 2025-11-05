@@ -13,6 +13,7 @@ import Popover from 'react-native-popover-view';
 
 import PlaylistSelector from '@/components/playlist/PlaylistSelector';
 import EditRecordingForm from '@/components/recording/EditRecordingForm';
+import MultiStepSaveRecordingForm from '@/components/recording/MultiStepSaveRecordingForm';
 import { ScriptureTaggedText } from '@/components/ui/ScriptureTaggedText';
 import TagIcon from '@/components/ui/TagIcon';
 import { getTagIcon } from '@/utils/tagIcons';
@@ -448,38 +449,26 @@ const RecordingListItem = React.memo(
           testID={`expand-row-${item.id}`}
         >
           {isEditing ? (
-            <Animated.View style={{ maxHeight: 420 }}>
-              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>
-                <EditRecordingForm
-                  title={editTitle}
-                  setTitle={setEditTitle}
-                  place={editPlace}
-                  setPlace={setEditPlace}
-                  tags={editTags}
-                  toggleTag={toggleEditTag}
-                  defaultTags={allTags}
-                  onSave={async (title, place, tags) => {
-                    console.log('[RecordingListItem] onSave called with:', { title, place, tags });
-                    console.log('[RecordingListItem] Current parent state values:', { 
-                      editTitle, 
-                      editPlace, 
-                      editTags 
-                    });
+            <>
+              {item.isTemporary ? (
+                <MultiStepSaveRecordingForm
+                  recording={item}
+                  onSave={async (updates) => {
+                    console.log('[RecordingListItem] MultiStepSaveRecordingForm onSave called with:', updates);
+                    console.log('[RecordingListItem] Original item:', item);
+                    // Use item.createdDate (from when recording was stopped) or current time as fallback
+                    const finalCreatedDate = item.createdDate || new Date().toISOString();
+                    console.log('[RecordingListItem] finalCreatedDate:', finalCreatedDate);
+                    console.log('[RecordingListItem] Parsed as timestamp:', Date.parse(finalCreatedDate));
                     const updatedEncounter: Encounter = {
                       ...item,
-                      title,
-                      tags,
-                      place,
-                      createdDate: editCreatedDate ?? new Date().toISOString(),
+                      ...updates,
+                      isTemporary: undefined, // Remove temporary flag
+                      createdDate: finalCreatedDate,
                     };
-                    console.log('[RecordingListItem] onSaveEdit - Final updatedEncounter:', { 
-                      id: updatedEncounter.id,
-                      title: updatedEncounter.title, 
-                      place: updatedEncounter.place, 
-                      tags: updatedEncounter.tags 
-                    });
+                    console.log('[RecordingListItem] Full updated encounter:', JSON.stringify(updatedEncounter, null, 2));
                     try {
-                      await saveEdit(updatedEncounter, updatedEncounter.createdDate ?? new Date().toISOString());
+                      await saveEdit(updatedEncounter, finalCreatedDate);
                       console.log('[RecordingListItem] saveEdit success');
                     } catch (err) {
                       console.error('[RecordingListItem] ERROR in saveEdit:', err);
@@ -487,14 +476,57 @@ const RecordingListItem = React.memo(
                     }
                   }}
                   onCancel={onCancelEdit}
-                  loading={isBusy}
-                  addCustomTag={addCustomTag}
-                  createdDate={editCreatedDate ?? new Date().toISOString()}
-                  setCreatedDate={setEditCreatedDate!}
-                  dropboxModified={item.dropboxModified ? String(item.dropboxModified) : undefined}
                 />
-              </ScrollView>
-            </Animated.View>
+              ) : (
+                <Animated.View style={{ maxHeight: 420 }}>
+                  <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>
+                    <EditRecordingForm
+                    title={editTitle}
+                    setTitle={setEditTitle}
+                    place={editPlace}
+                    setPlace={setEditPlace}
+                    tags={editTags}
+                    toggleTag={toggleEditTag}
+                    defaultTags={allTags}
+                    onSave={async (title, place, tags) => {
+                      console.log('[RecordingListItem] onSave called with:', { title, place, tags });
+                      console.log('[RecordingListItem] Current parent state values:', { 
+                        editTitle, 
+                        editPlace, 
+                        editTags 
+                      });
+                      const updatedEncounter: Encounter = {
+                        ...item,
+                        title,
+                        tags,
+                        place,
+                        createdDate: editCreatedDate ?? new Date().toISOString(),
+                      };
+                      console.log('[RecordingListItem] onSaveEdit - Final updatedEncounter:', { 
+                        id: updatedEncounter.id,
+                        title: updatedEncounter.title, 
+                        place: updatedEncounter.place, 
+                        tags: updatedEncounter.tags 
+                      });
+                      try {
+                        await saveEdit(updatedEncounter, updatedEncounter.createdDate ?? new Date().toISOString());
+                        console.log('[RecordingListItem] saveEdit success');
+                      } catch (err) {
+                        console.error('[RecordingListItem] ERROR in saveEdit:', err);
+                        throw err;
+                      }
+                    }}
+                    onCancel={onCancelEdit}
+                    loading={isBusy}
+                      addCustomTag={addCustomTag}
+                      createdDate={editCreatedDate ?? new Date().toISOString()}
+                      setCreatedDate={setEditCreatedDate!}
+                      dropboxModified={item.dropboxModified ? String(item.dropboxModified) : undefined}
+                    />
+                  </ScrollView>
+                </Animated.View>
+              )}
+            </>
           ) : (
             <>
               <View style={styles.titleTagsRow}>   

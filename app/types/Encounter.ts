@@ -8,6 +8,8 @@ export type Encounter = {
   tags?: string[];
   tag?: string;
   place?: string;
+  latitude?: number;  // GPS coordinates for map view
+  longitude?: number; // GPS coordinates for map view
   favorite?: boolean;
   views?: number;
 
